@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from ..core.client import NeosintezClient
 from ..exceptions import ApiError, ModelValidationError
 from ..utils import format_attribute_value
+from .cache import TTLCache
 from .mappers.object_mapper import ObjectMapper
 
 
@@ -28,20 +29,26 @@ class ObjectService(Generic[T]):
     Обеспечивает создание, чтение и обновление объектов.
     """
 
-    def __init__(self, client: NeosintezClient):
+    def __init__(self, client: NeosintezClient, metadata_cache_ttl: int = 1800, metadata_cache_max_size: int = 500):
         """
         Инициализирует сервис с клиентом API.
 
         Args:
             client: Экземпляр клиента для взаимодействия с API
+            metadata_cache_ttl: TTL кэша метаданных в секундах (по умолчанию 30 минут)
+            metadata_cache_max_size: Максимальный размер кэша метаданных
         """
         self.client = client
         self.mapper = ObjectMapper()
-        self._attr_cache = {}  # Кэш атрибутов классов: class_id -> {attr_id: attr_name}
+        # TTL кэш для атрибутов классов с автоматической инвалидацией
+        self._attr_cache = TTLCache[Dict[str, str]](
+            default_ttl=metadata_cache_ttl,
+            max_size=metadata_cache_max_size
+        )
 
     async def _get_class_attributes_mapping(self, class_id: str) -> Dict[str, str]:
         """
-        Получает маппинг ID атрибута -> Имя атрибута для класса с кэшированием.
+        Получает маппинг ID атрибута -> Имя атрибута для класса с TTL кэшированием.
 
         Args:
             class_id: ID класса
@@ -52,34 +59,58 @@ class ObjectService(Generic[T]):
         # Преобразуем в строку на всякий случай
         class_id = str(class_id)
 
-        if class_id not in self._attr_cache:
-            # Отладочная информация
-            logger.debug(f"Получен class_id: '{class_id}'")
+        # Проверяем TTL кэш
+        cached_mapping = self._attr_cache.get(class_id)
+        if cached_mapping is not None:
+            logger.debug(f"Найден кэшированный маппинг для класса '{class_id}': {len(cached_mapping)} атрибутов")
+            return cached_mapping
 
-            # Для класса Стройка используем известный маппинг
-            # Проверяем разные возможные варианты ID
-            if (
-                class_id == "3aa54908-2283-ec11-911c-005056b6948b"
-                or class_id.lower() == "3aa54908-2283-ec11-911c-005056b6948b"
-                or "3aa54908-2283-ec11-911c-005056b6948b" in class_id.lower()
-            ):
-                attr_mapping = {
-                    "626370d8-ad8f-ec11-911d-005056b6948b": "МВЗ",
-                    "f980619f-b547-ee11-917e-005056b6948b": "ID стройки Адепт",
-                }
-                logger.debug(
-                    f"Использован хардкод-маппинг для класса Стройка: {len(attr_mapping)} атрибутов"
-                )
-            else:
-                # Для других классов пока возвращаем пустой маппинг
-                attr_mapping = {}
-                logger.warning(
-                    f"Маппинг атрибутов для класса '{class_id}' не реализован"
-                )
+        # Кэша нет или он устарел, получаем данные заново
+        logger.debug(f"Загрузка нового маппинга для class_id: '{class_id}'")
 
-            self._attr_cache[class_id] = attr_mapping
+        # Для класса Стройка используем известный маппинг
+        # Проверяем разные возможные варианты ID
+        if (
+            class_id == "3aa54908-2283-ec11-911c-005056b6948b"
+            or class_id.lower() == "3aa54908-2283-ec11-911c-005056b6948b"
+            or "3aa54908-2283-ec11-911c-005056b6948b" in class_id.lower()
+        ):
+            attr_mapping = {
+                "626370d8-ad8f-ec11-911d-005056b6948b": "МВЗ",
+                "f980619f-b547-ee11-917e-005056b6948b": "ID стройки Адепт",
+            }
+            logger.debug(
+                f"Использован хардкод-маппинг для класса Стройка: {len(attr_mapping)} атрибутов"
+            )
+        else:
+            # Для других классов пока возвращаем пустой маппинг
+            attr_mapping = {}
+            logger.warning(
+                f"Маппинг атрибутов для класса '{class_id}' не реализован"
+            )
 
-        return self._attr_cache[class_id]
+        # Сохраняем в TTL кэш
+        self._attr_cache.set(class_id, attr_mapping)
+        logger.debug(f"Маппинг сохранен в кэш для класса '{class_id}'")
+
+        return attr_mapping
+
+    def invalidate_class_cache(self, class_id: str) -> None:
+        """
+        Инвалидирует кэш атрибутов для указанного класса.
+        Полезно когда метаданные класса изменились в Неосинтезе.
+
+        Args:
+            class_id: ID класса для инвалидации кэша
+        """
+        class_id = str(class_id)
+        self._attr_cache.remove(class_id)
+        logger.info(f"Кэш атрибутов инвалидирован для класса '{class_id}'")
+
+    def clear_metadata_cache(self) -> None:
+        """Очищает весь кэш метаданных."""
+        self._attr_cache.clear()
+        logger.info("Кэш метаданных полностью очищен")
 
     async def create(self, model: T, parent_id: Union[str, UUID]) -> str:
         """
@@ -111,7 +142,7 @@ class ObjectService(Generic[T]):
                 except AttributeError:
                     raise ModelValidationError(
                         "Модель должна иметь атрибут name или Name"
-                    )
+                    ) from None
 
             # 3) Находим класс по имени
             class_id = await self.client.classes.find_by_name(class_name)
@@ -259,14 +290,14 @@ class ObjectService(Generic[T]):
             except Exception as e:
                 logger.error(f"Ошибка при создании модели: {e!s}")
                 logger.error(f"Данные модели: {model_data}")
-                raise ModelValidationError(f"Ошибка при создании модели: {e!s}")
+                raise ModelValidationError(f"Ошибка при создании модели: {e!s}") from e
 
         except ApiError as e:
             logger.error(f"Ошибка API при чтении объекта: {e!s}")
             raise
         except Exception as e:
             logger.error(f"Ошибка при чтении объекта: {e!s}")
-            raise ApiError(f"Ошибка при чтении объекта: {e!s}")
+            raise ApiError(f"Ошибка при чтении объекта: {e!s}") from e
 
     async def update_attrs(self, object_id: Union[str, UUID], model: T) -> bool:
         """
@@ -372,7 +403,7 @@ class ObjectService(Generic[T]):
             raise
         except Exception as e:
             logger.error(f"Ошибка при обновлении атрибутов: {e!s}")
-            raise ApiError(f"Ошибка при обновлении атрибутов: {e!s}")
+            raise ApiError(f"Ошибка при обновлении атрибутов: {e!s}") from e
 
     def _format_attribute_value(self, attr_meta: Dict[str, Any], value: Any) -> Any:
         """

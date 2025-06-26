@@ -34,6 +34,17 @@ class NeosintezSettings(BaseSettings):
     verify_ssl: bool = True
     test_folder_id: Optional[str] = None
 
+    # Настройки кэша метаданных
+    metadata_cache_ttl: int = 1800  # 30 минут в секундах
+    metadata_cache_max_size: int = 500  # Максимум записей в кэше
+
+    # Настройки retry механизма
+    retry_max_attempts: int = 3  # Максимум попыток
+    retry_multiplier: float = 1.0  # Множитель для exponential backoff
+    retry_min_wait: float = 1.0  # Минимальная задержка в секундах
+    retry_max_wait: float = 60.0  # Максимальная задержка в секундах
+    retry_jitter: bool = True  # Добавлять случайный джиттер
+
     class Config:
         """Конфигурация настроек."""
 
