@@ -3,9 +3,11 @@
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+from uuid import UUID
 
 from ..models import Attribute, EntityClass
+from ..exceptions import ApiError
 from .base import BaseResource
 
 # Настройка логгера
@@ -221,3 +223,23 @@ class ClassesResource(BaseResource):
                 f"Ошибка при получении атрибутов через общий эндпоинт для класса {class_id}: {str(e)}"
             )
             return []
+
+    async def find_by_name(self, class_name: str) -> str:
+        """
+        Находит класс по имени.
+        
+        Args:
+            class_name: Имя класса для поиска
+            
+        Returns:
+            str: ID найденного класса
+            
+        Raises:
+            ApiError: Если класс не найден
+        """
+        classes = await self.get_classes_by_name(class_name)
+        if not classes:
+            raise ApiError(404, f"Класс '{class_name}' не найден", None)
+            
+        # Возвращаем ID первого найденного класса
+        return classes[0]["id"]

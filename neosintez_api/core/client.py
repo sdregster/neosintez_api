@@ -17,7 +17,7 @@ from .exceptions import (
     NeosintezTimeoutError,
 )
 from ..config import NeosintezSettings
-from ..utils import parse_error_response, retry
+from ..utils import parse_error_response, retry, CustomJSONEncoder
 
 # Настройка логгера
 logger = logging.getLogger("neosintez_api")
@@ -242,8 +242,8 @@ class NeosintezClient:
         if isinstance(data, BaseModel):
             data = data.model_dump(exclude_none=True)
 
-        # Преобразуем данные в JSON, если они не None
-        json_data = json.dumps(data) if data is not None else None
+        # Преобразуем данные в JSON, если они не None, используя кастомный энкодер
+        json_data = json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
 
         logger.debug(f"Запрос {method} {self.settings.base_url}{endpoint}")
         if params:
@@ -357,8 +357,8 @@ class NeosintezClient:
         if isinstance(data, BaseModel):
             data = data.model_dump(exclude_none=True)
 
-        # Преобразуем данные в JSON, если они не None
-        json_data = json.dumps(data) if data is not None else None
+        # Преобразуем данные в JSON, если они не None, используя кастомный энкодер
+        json_data = json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
 
         try:
             async with self.session.request(

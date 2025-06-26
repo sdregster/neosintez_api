@@ -19,6 +19,7 @@ from typing import (
 from datetime import date, time, datetime
 from decimal import Decimal
 from uuid import UUID
+from enum import IntEnum
 
 import aiohttp
 
@@ -33,6 +34,18 @@ from .exceptions import (
 logger = logging.getLogger("neosintez_api")
 
 T = TypeVar("T")
+
+
+class CustomJSONEncoder(json.JSONEncoder):
+    """
+    Кастомный JSON-энкодер для сериализации UUID и datetime.
+    """
+    def default(self, obj):
+        if isinstance(obj, UUID):
+            return str(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 async def retry_async(
@@ -347,48 +360,91 @@ def convert_value_to_wio_format(value: Any, wio_type: WioAttributeType) -> Any:
         )
 
 
+def format_attribute_value(attr_meta: Dict[str, Any], value: Any) -> Any:
+    """
+    Форматирует значение атрибута в соответствии с его типом.
+    
+    Args:
+        attr_meta: Метаданные атрибута
+        value: Значение атрибута
+        
+    Returns:
+        Any: Отформатированное значение
+    """
+    if value is None:
+        return None
+        
+    # Получаем тип атрибута
+    attr_type = attr_meta.get("Type") if isinstance(attr_meta, dict) else getattr(attr_meta, "Type", None)
+    
+    if attr_type is None:
+        return value  # Если не удалось определить тип, возвращаем как есть
+    
+    try:
+        # Преобразуем значение в зависимости от типа атрибута
+        if attr_type == WioAttributeType.NUMBER:
+            # Целое число
+            if isinstance(value, str) and value.strip():
+                return int(value)
+            return int(value) if value is not None else None
+        elif attr_type == WioAttributeType.STRING:
+            # Строка
+            return str(value) if value is not None else None
+        elif attr_type == WioAttributeType.DATE:
+            # Дата
+            if isinstance(value, datetime):
+                return value.date().isoformat()
+            return str(value)
+        elif attr_type == WioAttributeType.TIME:
+            # Время
+            if isinstance(value, datetime):
+                return value.time().isoformat()
+            return str(value)
+        elif attr_type == WioAttributeType.DATETIME:
+            # Дата и время
+            if isinstance(value, datetime):
+                return value.isoformat()
+            return str(value)
+        elif attr_type == WioAttributeType.TEXT:
+            # Текст с форматированием
+            return str(value) if value is not None else None
+        elif attr_type == WioAttributeType.FILE:
+            # Файл
+            return value
+        elif attr_type == WioAttributeType.OBJECT_LINK:
+            # Ссылка на другой объект
+            return value
+        else:
+            # Другие типы
+            return value
+    except (ValueError, TypeError) as e:
+        # В случае ошибки преобразования возвращаем исходное значение
+        return value
+
+
 def build_attribute_body(
     attr_meta: Dict[str, Any], value: Any, attr_type: Optional[WioAttributeType] = None
 ) -> Dict[str, Any]:
     """
-    Создает тело запроса для атрибута с валидацией и конвертацией типов.
-
+    Создает тело атрибута для API в старом формате (список атрибутов с Id и Value).
+    Рекомендуется использовать format_attribute_value вместо этой функции.
+    
     Args:
-        attr_meta: Метаданные атрибута из API
+        attr_meta: Метаданные атрибута
         value: Значение атрибута
         attr_type: Явно указанный тип атрибута (если известен)
-
+        
     Returns:
         Dict[str, Any]: Тело атрибута для API запроса
-
-    Raises:
-        NeosintezValidationError: Если значение не может быть преобразовано
     """
-    # Определяем тип атрибута
-    if attr_type is None:
-        # Пытаемся получить тип из метаданных атрибута
-        meta_type = attr_meta.get("Type")
-        if isinstance(meta_type, int):
-            try:
-                attr_type = WioAttributeType(meta_type)
-            except ValueError:
-                raise NeosintezValidationError(
-                    f"Неизвестный тип атрибута в API: {meta_type}"
-                )
-        else:
-            # Пытаемся определить тип по значению
-            python_type = type(value)
-            attr_type = get_wio_attribute_type(python_type)
-
-    # Конвертируем значение
-    converted_value = convert_value_to_wio_format(value, attr_type)
-
-    # Формируем тело запроса
+    attr_id = attr_meta["Id"] if isinstance(attr_meta, dict) else attr_meta.Id
+    attr_id = str(attr_id)
+    
+    formatted_value = format_attribute_value(attr_meta, value)
+        
     return {
-        "Name": attr_meta["Name"],
-        "Id": attr_meta["Id"],
-        "Type": attr_type.value,  # Передаем числовое значение типа
-        "Value": converted_value,
+        "Id": attr_id,
+        "Value": formatted_value
     }
 
 

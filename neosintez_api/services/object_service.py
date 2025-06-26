@@ -4,14 +4,17 @@
 """
 
 import logging
-from typing import Any, Dict, Generic, List, Type, TypeVar, Union
+import uuid
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from ..client import NeosintezClient
+from ..core.enums import WioAttributeType
 from ..exceptions import ApiError, ModelValidationError
-from ..utils import build_attribute_body
+from ..utils import format_attribute_value, build_attribute_body
+from .mappers.object_mapper import ObjectMapper
 
 # Определяем тип для динамических моделей
 T = TypeVar("T", bound=BaseModel)
@@ -22,17 +25,18 @@ logger = logging.getLogger("neosintez_api.services.object_service")
 
 class ObjectService(Generic[T]):
     """
-    Сервис для работы с объектами через модели Pydantic.
+    Сервис для работы с объектами через Pydantic-модели.
     """
 
     def __init__(self, client: NeosintezClient):
         """
-        Инициализирует сервис объектов.
-
+        Инициализирует сервис.
+        
         Args:
-            client: Клиент API Неосинтеза
+            client: Клиент API
         """
         self.client = client
+        self.mapper = ObjectMapper()
 
     async def create(self, model: T, parent_id: Union[str, UUID]) -> str:
         """
@@ -57,108 +61,64 @@ class ObjectService(Generic[T]):
 
             # 2) Получаем имя объекта из модели
             try:
-                object_name = model.get_object_name()
-            except (AttributeError, ValueError):
-                # Пробуем найти поле Name или поле с алиасом Name
-                object_name = None
-                if hasattr(model, "Name"):
-                    object_name = model.Name
-                else:
-                    for field_name, field_info in model.model_fields.items():
-                        if hasattr(field_info, "alias") and field_info.alias == "Name":
-                            object_name = getattr(model, field_name)
-                            break
+                object_name = model.Name
+            except AttributeError:
+                try:
+                    object_name = model.name
+                except AttributeError:
+                    raise ModelValidationError("Модель должна иметь атрибут name или Name")
 
-                if not object_name:
-                    raise ModelValidationError(
-                        "Модель должна иметь поле с именем 'Name' или с alias='Name'"
-                    )
-
-            # 3) Получаем ID класса по его имени
-            classes = await self.client.classes.get_classes_by_name(class_name)
-            if not classes:
-                raise ApiError(f"Класс '{class_name}' не найден")
-
-            class_id = classes[0]["id"]
-            class_name_from_api = classes[0]["name"]
-            logger.info(f"Найден класс '{class_name_from_api}' с ID {class_id}")
+            # 3) Находим класс по имени
+            class_id = await self.client.classes.find_by_name(class_name)
+            logger.info(f"Найден класс '{class_name}' с ID {class_id}")
 
             # 4) Получаем атрибуты класса
             class_attributes = await self.client.classes.get_attributes(class_id)
             logger.info(f"Получено {len(class_attributes)} атрибутов класса")
 
-            # 5) Создаем словарь атрибутов по имени
-            attr_by_name = {}
-            for attr in class_attributes:
-                if isinstance(attr, dict) and "Name" in attr:
-                    attr_by_name[attr["Name"]] = attr
-                else:
-                    logger.warning(f"Пропущен атрибут с неверным форматом: {attr}")
-
-            # 6) Подготавливаем базовые данные объекта
+            # 5) Создаем объект
             object_data = {
                 "Name": object_name,
-                "Entity": {"Id": class_id, "Name": class_name},
-                "IsActualVersion": True,
-                "Version": 1,
-                "VersionTimestamp": "2023-01-01T00:00:00Z",
-                "Attributes": {},  # Добавляем атрибуты прямо в запрос на создание
+                "Entity": {
+                    "Id": class_id,
+                    "Name": class_name
+                }
             }
 
-            # 7) Получаем словарь с ключами-алиасами
-            try:
-                model_data = model.get_attribute_data()
-            except AttributeError:
-                model_data = model.model_dump(by_alias=True)
+            if parent_id:
+                object_data["Parent"] = {"Id": str(parent_id)}
 
-            # 8) Получаем маппинг полей на атрибуты
-            try:
-                field_mapping = model.get_field_to_attribute_mapping()
-            except AttributeError:
-                field_mapping = {}
-                for field_name, field_info in model.model_fields.items():
-                    field_mapping[field_name] = field_info.alias or field_name
+            logger.info(f"Создание объекта '{object_name}' класса '{class_name}' в родителе {parent_id}")
+            response = await self.client.objects.create(object_data)
+            
+            # Получаем ID созданного объекта
+            object_id = response.get("Id")
+            if not object_id:
+                raise ApiError("Не удалось получить ID созданного объекта")
+            
+            # 6) Подготавливаем атрибуты для установки
+            attr_meta_by_name = {}
+            for attr in class_attributes:
+                if isinstance(attr, dict):
+                    attr_name = attr.get("Name")
+                    if attr_name:
+                        attr_meta_by_name[attr_name] = attr
+                else:
+                    attr_name = getattr(attr, "Name", None)
+                    if attr_name:
+                        attr_meta_by_name[attr_name] = attr
 
-            # 9) Итерируем по всем полям модели, кроме Name
-            for field_name, field_value in model_data.items():
-                # Пропускаем Name и None значения
-                if field_name == "Name" or field_value is None:
-                    continue
-
-                # Ищем соответствующий атрибут в классе по алиасу
-                if field_name in attr_by_name:
-                    attr_meta = attr_by_name[field_name]
-                    attr_id = attr_meta["Id"]
-
-                    # Создаем тело атрибута
-                    try:
-                        # Добавляем атрибут в словарь атрибутов объекта
-                        object_data["Attributes"][attr_id] = {
-                            "Name": field_name,
-                            "Type": attr_meta["Type"],
-                            "Value": field_value,
-                        }
-                        logger.info(f"Добавлен атрибут {field_name}={field_value}")
-                    except Exception as e:
-                        logger.warning(
-                            f"Ошибка при создании атрибута {field_name}: {str(e)}"
-                        )
-
-            # 10) Создаем объект с атрибутами
-            logger.info(
-                f"Создание объекта '{object_name}' класса '{class_name}' в родителе {parent_id}"
-            )
-            object_id = await self.client.objects.create(parent_id, object_data)
-            logger.info(f"Создан объект с ID {object_id}")
-
+            # 7) Преобразуем модель в атрибуты
+            attributes_list = await self.mapper.model_to_attributes(model, attr_meta_by_name)
+            
+            # 8) Устанавливаем атрибуты
+            if attributes_list:
+                await self.client.objects.set_attributes(object_id, attributes_list)
+            
             return object_id
-
-        except ApiError as e:
-            logger.error(f"Ошибка API при создании объекта: {str(e)}")
-            raise
         except Exception as e:
-            logger.error(f"Ошибка при создании объекта: {str(e)}")
-            raise ApiError(f"Ошибка при создании объекта: {str(e)}")
+            logger.error(f"Ошибка API при создании объекта: {e}")
+            raise
 
     async def read(self, object_id: Union[str, UUID], model_class: Type[T]) -> T:
         """
@@ -254,122 +214,87 @@ class ObjectService(Generic[T]):
     async def update_attrs(self, object_id: Union[str, UUID], model: T) -> bool:
         """
         Обновляет атрибуты объекта из модели Pydantic.
-        Обновляются только те атрибуты, которые изменились.
-
+        Отправляет только изменившиеся атрибуты.
+        
         Args:
-            object_id: Идентификатор объекта
-            model: Модель объекта
-
+            object_id: ID объекта
+            model: Новые данные объекта
+            
         Returns:
-            bool: True, если атрибуты успешно обновлены
-
-        Raises:
-            ApiError: Если произошла ошибка при обновлении атрибутов
-            ModelValidationError: Если модель не соответствует требованиям
+            bool: True если обновление успешно
         """
         try:
-            # 1) Получаем текущие данные объекта вместе с атрибутами
-            object_data = await self.client.objects.get_by_id(object_id)
-            logger.info(f"Получены данные объекта {object_id}")
-
-            # 2) Создаем словарь атрибутов по имени
-            attr_by_name = {}
-            attr_values = {}
-
-            # Обрабатываем атрибуты из объекта
-            if hasattr(object_data, "Attributes") and object_data.Attributes:
-                for attr_id, attr_data in object_data.Attributes.items():
-                    if isinstance(attr_data, dict) and "Name" in attr_data:
-                        attr_name = attr_data["Name"]
-                        attr_by_name[attr_name] = {"Id": attr_id, **attr_data}
-                        if "Value" in attr_data:
-                            attr_values[attr_name] = attr_data["Value"]
-                    else:
-                        # Если атрибут не словарь или не содержит имя, пропускаем его
-                        logger.warning(
-                            f"Пропущен атрибут с неверным форматом: {attr_id}={attr_data}"
-                        )
-
-            # 3) Получаем класс объекта
-            class_id = object_data.EntityId
-            if not class_id:
-                raise ApiError(f"Не удалось определить класс объекта {object_id}")
-
-            # 4) Получаем атрибуты класса (для тех, которых нет у объекта)
+            # 1) Получить текущие данные объекта
+            current_obj = await self.client.objects.get_by_id(object_id)
+            logger.info(f"Получен объект {object_id}")
+            
+            # 2) Получить атрибуты класса объекта
+            class_id = current_obj.EntityId
             class_attributes = await self.client.classes.get_attributes(class_id)
-            logger.info(f"Получено {len(class_attributes)} атрибутов класса")
-
-            # 5) Дополняем словарь атрибутов атрибутами класса
-            for attr in class_attributes:
-                if (
-                    hasattr(attr, "Name")
-                    and attr.Name
-                    and attr.Name not in attr_by_name
-                ):
-                    attr_dict = attr.model_dump()
-                    attr_by_name[attr.Name] = attr_dict
-
-            # 6) Подготавливаем набор атрибутов для обновления
-            attributes_to_update = []
-
-            # Получаем словарь с ключами-алиасами
-            try:
-                model_data = model.get_attribute_data()
-            except AttributeError:
-                model_data = model.model_dump(by_alias=True)
-
-            # Получаем маппинг полей на атрибуты
-            try:
-                field_mapping = model.get_field_to_attribute_mapping()
-            except AttributeError:
-                field_mapping = {}
-                for field_name, field_info in model.model_fields.items():
-                    field_mapping[field_name] = field_info.alias or field_name
-
-            # Проверяем поля модели, кроме Name
-            for field_name, field_value in model_data.items():
-                # Пропускаем Name и None значения
-                if field_name == "Name" or field_value is None:
+            logger.debug(f"Получено {len(class_attributes)} атрибутов класса")
+            
+            # 3) Создать словарь атрибутов по имени
+            attr_by_name = {
+                (a["Name"] if isinstance(a, dict) else a.Name):
+                (a if isinstance(a, dict) else a.model_dump())
+                for a in class_attributes
+            }
+            
+            # 4) Получить текущие значения атрибутов
+            current_attrs = {}
+            if hasattr(current_obj, "Attributes") and current_obj.Attributes:
+                for attr_id, attr_data in current_obj.Attributes.items():
+                    if isinstance(attr_data, dict) and "Name" in attr_data:
+                        current_attrs[attr_data["Name"]] = attr_data["Value"]
+            
+            # 5) Сравнить с новыми значениями и собрать изменившиеся
+            model_data = model.model_dump(by_alias=True)
+            changed_attrs = []
+            
+            for attr_name, value in model_data.items():
+                if attr_name == "Name" or value is None:
                     continue
-
-                # Ищем атрибут по алиасу
-                if field_name in attr_by_name:
-                    attr_meta = attr_by_name[field_name]
-
-                    # Проверяем, изменилось ли значение
-                    if (
-                        field_name not in attr_values
-                        or attr_values[field_name] != field_value
-                    ):
-                        # Создаем тело атрибута
-                        try:
-                            attr_body = self._build_attribute_body(
-                                attr_meta, field_value
-                            )
-                            attributes_to_update.append(attr_body)
-                            logger.info(
-                                f"Атрибут {field_name} будет обновлен: {field_value}"
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                f"Ошибка при создании тела атрибута {field_name}: {str(e)}"
-                            )
-
-            # 7) Устанавливаем атрибуты
-            if attributes_to_update:
-                await self._set_attributes(object_id, attributes_to_update)
-                logger.info(f"Обновлены атрибуты для объекта {object_id}")
-                return True
-            else:
-                logger.info("Нет атрибутов для обновления")
-                return False
-
+                    
+                if attr_name not in current_attrs or current_attrs[attr_name] != value:
+                    if attr_name in attr_by_name:
+                        attr_meta = attr_by_name[attr_name]
+                        attr_id = str(attr_meta["Id"] if isinstance(attr_meta, dict) else attr_meta.Id)
+                        formatted_value = self._format_attribute_value(attr_meta, value)
+                        changed_attrs.append({
+                            "Id": attr_id,
+                            "Value": formatted_value
+                        })
+                        
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(f"Изменен атрибут {attr_name}: {current_attrs.get(attr_name)} -> {value}")
+            
+            # 6) Обновить изменившиеся атрибуты
+            if changed_attrs:
+                logger.info(f"Обновление {len(changed_attrs)} атрибутов объекта {object_id}")
+                return await self.client.objects.set_attributes(object_id, changed_attrs)
+            
+            logger.info("Нет изменившихся атрибутов для обновления")
+            return True
+            
         except ApiError as e:
             logger.error(f"Ошибка API при обновлении атрибутов: {str(e)}")
             raise
         except Exception as e:
             logger.error(f"Ошибка при обновлении атрибутов: {str(e)}")
             raise ApiError(f"Ошибка при обновлении атрибутов: {str(e)}")
+            
+    def _format_attribute_value(self, attr_meta: Dict[str, Any], value: Any) -> Any:
+        """
+        Форматирует значение атрибута для API.
+        
+        Args:
+            attr_meta: Метаданные атрибута
+            value: Значение атрибута
+            
+        Returns:
+            Any: Отформатированное значение
+        """
+        return format_attribute_value(attr_meta, value)
 
     async def _set_attributes(
         self, object_id: str, attributes: List[Dict[str, Any]]
@@ -379,7 +304,7 @@ class ObjectService(Generic[T]):
 
         Args:
             object_id: Идентификатор объекта
-            attributes: Список атрибутов для установки
+            attributes: Список атрибутов для установки в формате [{\"Id\": \"...\", \"Value\": \"...\", \"Type\": 1}]
 
         Returns:
             bool: True, если атрибуты успешно установлены
@@ -394,68 +319,30 @@ class ObjectService(Generic[T]):
 
             # Вывод атрибутов для отладки
             for i, attr in enumerate(attributes):
-                logger.debug(f"Атрибут {i + 1}: {attr}")
+                logger.debug(f"Атрибут {i+1}: {attr}")
 
-            # Устанавливаем атрибуты
-            result = await self.client.objects.set_attributes(object_id, attributes)
+            # Проверяем, что все атрибуты имеют необходимые поля
+            for attr in attributes:
+                if "Id" not in attr:
+                    raise ValueError(f"Атрибут не содержит поле Id: {attr}")
+                if "Value" not in attr:
+                    raise ValueError(f"Атрибут не содержит поле Value: {attr}")
+                if "Type" not in attr:
+                    # Если тип не указан, пытаемся определить его
+                    # ВАЖНО: В API Неосинтез тип 1 - это число, тип 2 - это строка
+                    # Это отличается от нашего перечисления WioAttributeType
+                    if isinstance(attr["Value"], int):
+                        attr["Type"] = 1  # Число
+                    elif isinstance(attr["Value"], str):
+                        attr["Type"] = 2  # Строка
+                    else:
+                        attr["Type"] = 2  # По умолчанию строка
+                if "Name" not in attr:
+                    attr["Name"] = ""
+                if "Constraints" not in attr:
+                    attr["Constraints"] = []
 
-            if not result:
-                logger.warning(
-                    f"Не удалось установить атрибуты для объекта {object_id}"
-                )
-                return False
-
-            logger.info(f"Успешно установлены атрибуты для объекта {object_id}")
-            return True
+            return await self.client.objects.set_attributes(object_id, attributes)
         except Exception as e:
-            logger.error(f"Ошибка при установке атрибутов: {str(e)}")
-            raise ApiError(f"Ошибка при установке атрибутов: {str(e)}")
-
-    def _build_attribute_body(
-        self, attr_meta: Dict[str, Any], value: Any
-    ) -> Dict[str, Any]:
-        """
-        Формирует тело запроса для атрибута на основе его метаданных и значения.
-
-        Args:
-            attr_meta: Метаданные атрибута
-            value: Значение атрибута
-
-        Returns:
-            Dict[str, Any]: Тело запроса для атрибута
-        """
-        try:
-            # Получаем базовые данные атрибута
-            attr_id = attr_meta["Id"]
-            attr_name = attr_meta["Name"]
-            attr_type = attr_meta.get("Type", 0)
-
-            # Формируем тело запроса в зависимости от типа атрибута
-            body = {
-                "Id": attr_id,
-                "Name": attr_name,  # Добавляем имя атрибута
-                "Type": attr_type,
-            }
-
-            # Добавляем значение в правильном формате в зависимости от типа атрибута
-            if attr_type == 0:  # Строка
-                body["Value"] = str(value)
-            elif attr_type == 1:  # Целое число
-                body["Value"] = int(value)
-            elif attr_type == 2:  # Вещественное число
-                body["Value"] = float(value)
-            elif attr_type == 3:  # Дата
-                body["Value"] = str(
-                    value
-                )  # Предполагается, что дата передается в строковом формате
-            elif attr_type == 4:  # Булево
-                body["Value"] = bool(value)
-            else:
-                body["Value"] = str(value)  # По умолчанию преобразуем в строку
-
-            return body
-        except Exception as e:
-            logger.warning(
-                f"Ошибка при создании тела атрибута: {str(e)}. Используем упрощенную версию."
-            )
-            return build_attribute_body(attr_meta, value)
+            logger.error(f"Ошибка при установке атрибутов: {e}")
+            raise ApiError(f"Ошибка API при установке атрибутов: {e}") from e

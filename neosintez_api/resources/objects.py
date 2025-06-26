@@ -6,6 +6,8 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
+import json
+from datetime import datetime, date
 
 from ..models import (
     Object,
@@ -15,7 +17,7 @@ from ..models import (
     SearchRequest,
     SearchResponse,
 )
-from ..utils import chunk_list
+from ..utils import chunk_list, CustomJSONEncoder
 from .base import BaseResource
 
 # Настройка логгера
@@ -58,61 +60,23 @@ class ObjectsResource(BaseResource):
 
         raise NeosintezAPIError(404, "Объект не найден", None)
 
-    async def create(self, parent_id: Union[str, UUID], data: Dict[str, Any]) -> str:
+    async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Создает новый объект в API.
-
+        Создает новый объект.
+        
         Args:
-            parent_id: ID родительского объекта
-            data: Данные для создания объекта
-
+            data: Данные объекта для создания
+            
         Returns:
-            str: ID созданного объекта
+            Dict[str, Any]: Созданный объект с его ID и другими данными
         """
-        endpoint = "api/objects"
-        params = {"parent": str(parent_id)}
-
-        # Создаем копию данных для модификации
-        create_data = {}
-
-        # Добавляем только необходимые поля для создания объекта
-        if "Name" in data:
-            create_data["Name"] = data["Name"]
-
-        # Добавляем Entity в правильном формате
-        if (
-            "Entity" in data
-            and isinstance(data["Entity"], dict)
-            and "Id" in data["Entity"]
-        ):
-            create_data["Entity"] = {"Id": str(data["Entity"]["Id"])}
-            if "Name" in data["Entity"]:
-                create_data["Entity"]["Name"] = data["Entity"]["Name"]
-
-        # Отладочный вывод для анализа запроса
-        import json
-
-        logger.debug(
-            f"Отправка запроса на создание объекта: {json.dumps(create_data, ensure_ascii=False, indent=2)}"
-        )
-
-        result = await self._request("POST", endpoint, params=params, data=create_data)
-
-        if isinstance(result, str):
-            object_id = result.strip('"')
-
-            # Если есть атрибуты для установки, устанавливаем их
-            if "Attributes" in data and data["Attributes"]:
-                try:
-                    await self.set_attributes(object_id, data["Attributes"])
-                except Exception as e:
-                    logger.error(
-                        f"Ошибка при установке атрибутов для нового объекта: {str(e)}"
-                    )
-
-            return object_id
-
-        return result
+        try:
+            logger.debug(f"Отправка запроса на создание объекта: {data}")
+            response = await self._request("POST", "api/objects", data=data)
+            return response
+        except Exception as e:
+            logger.error(f"Ошибка при создании объекта: {e}")
+            raise
 
     async def update(self, object_id: Union[str, UUID], data: Dict[str, Any]) -> bool:
         """
@@ -371,40 +335,119 @@ class ObjectsResource(BaseResource):
 
         return await self.search_all(request)
 
-    async def set_attributes(
-        self, object_id: Union[str, UUID], attributes: List[Dict[str, Any]]
-    ) -> bool:
+    async def set_attributes(self, object_id: Union[str, UUID], attributes: Union[List[Dict[str, Any]], Dict[str, Any]]) -> bool:
         """
         Устанавливает атрибуты объекта.
-
+        
         Args:
-            object_id: ID объекта
-            attributes: Список атрибутов для установки
-
+            object_id: Идентификатор объекта
+            attributes: Список атрибутов для установки или словарь {attr_id: value}
+        
         Returns:
             bool: True, если атрибуты успешно установлены
-
-        Raises:
-            ApiError: Если произошла ошибка при установке атрибутов
         """
-        if not attributes:
-            logger.warning("Нет атрибутов для установки")
-            return True
-
+        # Приводим object_id к строке и обрабатываем случай, когда это словарь из API
+        if isinstance(object_id, dict) and 'Id' in object_id:
+            object_id = object_id['Id']
+        else:
+            object_id = str(object_id)
+        
+        # Проверка формата входных атрибутов и логирование
+        logger.debug(f"Получены атрибуты для установки. Тип: {type(attributes)}, значение: {attributes}")
+        
+        # Преобразуем атрибуты в нужный формат для API
+        attributes_array = []
+        
+        if isinstance(attributes, list):
+            # Если атрибуты уже в формате списка объектов, проверяем наличие всех необходимых полей
+            for attr in attributes:
+                attr_obj = attr.copy()  # Создаем копию, чтобы не изменять оригинал
+                
+                # Проверяем наличие обязательных полей
+                if 'Id' not in attr_obj:
+                    raise ValueError(f"Атрибут должен иметь поле 'Id': {attr_obj}")
+                
+                if 'Value' not in attr_obj:
+                    raise ValueError(f"Атрибут должен иметь поле 'Value': {attr_obj}")
+                
+                # Добавляем поле Name, если его нет
+                if 'Name' not in attr_obj:
+                    attr_obj['Name'] = "forvalidation"
+                
+                # Добавляем поле Type, если его нет
+                if 'Type' not in attr_obj:
+                    # Определяем тип по значению
+                    if isinstance(attr_obj['Value'], int):
+                        attr_obj['Type'] = 1  # INTEGER
+                    elif isinstance(attr_obj['Value'], str):
+                        attr_obj['Type'] = 2  # STRING
+                    elif isinstance(attr_obj['Value'], float):
+                        attr_obj['Type'] = 3  # FLOAT
+                    elif isinstance(attr_obj['Value'], bool):
+                        attr_obj['Type'] = 4  # BOOLEAN
+                    else:
+                        attr_obj['Type'] = 2  # По умолчанию STRING
+                
+                # Добавляем пустой список Constraints, если его нет
+                if 'Constraints' not in attr_obj:
+                    attr_obj['Constraints'] = []
+                
+                attributes_array.append(attr_obj)
+        elif isinstance(attributes, dict):
+            # Если атрибуты в формате словаря {attr_id: value}, преобразуем в список объектов
+            for attr_id, value in attributes.items():
+                # Проверка, является ли значение словарем с полным описанием атрибута
+                if isinstance(value, dict) and 'Value' in value:
+                    attr_obj = value.copy()
+                    attr_obj['Id'] = attr_id
+                    
+                    # Добавляем обязательные поля, если их нет
+                    if 'Name' not in attr_obj:
+                        attr_obj['Name'] = "forvalidation"
+                    
+                    if 'Type' not in attr_obj:
+                        # Определяем тип по значению
+                        if isinstance(attr_obj['Value'], int):
+                            attr_obj['Type'] = 1  # INTEGER
+                        elif isinstance(attr_obj['Value'], str):
+                            attr_obj['Type'] = 2  # STRING
+                        elif isinstance(attr_obj['Value'], float):
+                            attr_obj['Type'] = 3  # FLOAT
+                        elif isinstance(attr_obj['Value'], bool):
+                            attr_obj['Type'] = 4  # BOOLEAN
+                        else:
+                            attr_obj['Type'] = 2  # По умолчанию STRING
+                    
+                    if 'Constraints' not in attr_obj:
+                        attr_obj['Constraints'] = []
+                else:
+                    # Создаем полный объект атрибута
+                    attr_type = 1 if isinstance(value, int) else 2 if isinstance(value, str) else 3 if isinstance(value, float) else 4 if isinstance(value, bool) else 2
+                    attr_obj = {
+                        'Id': attr_id,
+                        'Name': "forvalidation",
+                        'Type': attr_type,
+                        'Value': value,
+                        'Constraints': []
+                    }
+                
+                attributes_array.append(attr_obj)
+        else:
+            raise TypeError(f"Неподдерживаемый тип атрибутов: {type(attributes)}")
+        
+        # Формируем эндпоинт для установки атрибутов
         endpoint = f"api/objects/{object_id}/attributes"
-
-        # Отладочный вывод для анализа запроса
-        import json
-
-        logger.debug(
-            f"Отправка запроса на установку атрибутов: {json.dumps(attributes, ensure_ascii=False, indent=2)}"
-        )
-
+        
+        # Логирование запроса
+        logger.debug(f"Отправка запроса на установку атрибутов: {attributes_array}")
+        
+        # Вывод атрибутов в формате JSON для отладки
+        logger.debug(f"Атрибуты в JSON: {json.dumps(attributes_array, cls=CustomJSONEncoder)}")
+        
         try:
-            await self._request("PUT", endpoint, data=attributes)
+            await self._request("PUT", endpoint, data=attributes_array)
             return True
         except Exception as e:
-            logger.error(
-                f"Ошибка при установке атрибутов объекта {object_id}: {str(e)}"
-            )
+            logger.error(f"Ошибка при установке атрибутов объекта {object_id}: {e}")
+            logger.error(f"Данные запроса: {attributes_array}")
             raise

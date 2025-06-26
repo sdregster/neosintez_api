@@ -8,6 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union, Tuple
 
 import aiohttp
+import warnings
 
 from .config import NeosintezSettings
 from .exceptions import (
@@ -16,7 +17,7 @@ from .exceptions import (
     NeosintezConnectionError,
     NeosintezTimeoutError,
 )
-from .utils import parse_error_response, retry
+from .utils import parse_error_response, retry, CustomJSONEncoder
 
 from .resources import (
     ObjectsResource,
@@ -30,6 +31,8 @@ logger.setLevel(logging.DEBUG)  # Устанавливаем уровень ло
 
 T = TypeVar("T")
 
+warnings.warn("Импорт из neosintez_api.client устарел, используйте neosintez_api.core.client", DeprecationWarning)
+from .core.client import NeosintezClient
 
 class NeosintezClient:
     """
@@ -263,8 +266,17 @@ class NeosintezClient:
 
         try:
             logger.debug(f"Отправка запроса {method} {url}")
+            
+            # Используем dumps с CustomJSONEncoder для сериализации UUID и других специальных типов
+            json_str = None
+            if json_data is not None:
+                json_str = json.dumps(json_data, cls=CustomJSONEncoder)
+                logger.debug(f"JSON данные запроса: {json_str}")
+            
             async with self.session.request(
-                method, url, params=params, json=json_data, headers=request_headers
+                method, url, params=params, 
+                data=json_str if json_str else None,
+                headers=request_headers
             ) as response:
                 if response.status < 400:
                     if response.status == 204:  # No Content
