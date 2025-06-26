@@ -93,12 +93,12 @@ class EntityClass(BaseModel):
 class AttributeType(BaseModel):
     """
     Тип атрибута объекта в системе Неосинтез.
-    
+
     Attributes:
         Id: Идентификатор типа атрибута
         Name: Наименование типа атрибута
     """
-    
+
     Id: int
     Name: str
 
@@ -107,7 +107,7 @@ class AttributeConstraint(BaseModel):
     """
     Ограничения для атрибута объекта.
     """
-    
+
     pass
 
 
@@ -143,11 +143,11 @@ class Attribute(BaseModel):
 class AttributeListResponse(BaseModel):
     """
     Ответ на запрос списка атрибутов.
-    
+
     Attributes:
         Result: Список атрибутов
     """
-    
+
     Result: List[Attribute]
 
 

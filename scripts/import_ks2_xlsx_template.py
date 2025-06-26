@@ -13,14 +13,12 @@ from uuid import UUID
 from datetime import datetime
 
 import pandas as pd
-import aiohttp
 
 # Загрузка переменных окружения из .env файла
 from dotenv import load_dotenv
 
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
-from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
 from neosintez_api.models import EntityClass
 
 load_dotenv()
@@ -42,7 +40,7 @@ class UUIDEncoder(json.JSONEncoder):
         if isinstance(obj, UUID):
             # Если объект - UUID, преобразуем его в строку
             return str(obj)
-        elif hasattr(obj, 'isoformat'):
+        elif hasattr(obj, "isoformat"):
             # Если объект имеет метод isoformat (например, datetime, date)
             return obj.isoformat()
         return super().default(obj)
@@ -443,19 +441,21 @@ class NeosintezExcelImporter:
                 if created_obj:
                     # Сохраняем соответствие временного ID и реального ID
                     created_objects[obj["id"]] = created_obj["Id"]
-                    
+
                     # Добавляем в результат
                     result_obj = obj.copy()
                     result_obj["neosintez_id"] = created_obj["Id"]
                     result.append(result_obj)
-                    
+
                     # Если это объект первого уровня, добавляем его в список ключевых объектов
                     if obj["level"] == 1:
-                        root_level_objects.append({
-                            "name": obj["name"],
-                            "id": created_obj["Id"],
-                            "class": obj["class_name"]
-                        })
+                        root_level_objects.append(
+                            {
+                                "name": obj["name"],
+                                "id": created_obj["Id"],
+                                "class": obj["class_name"],
+                            }
+                        )
                 else:
                     logger.error(f"Не удалось создать объект {obj['name']}")
             except Exception as e:
@@ -468,20 +468,22 @@ class NeosintezExcelImporter:
             print("\n" + "=" * 80)
             print("СОЗДАННЫЕ КЛЮЧЕВЫЕ ОБЪЕКТЫ (уровень 1):")
             print("=" * 80)
-            
+
             for obj in root_level_objects:
                 logger.info(f"► {obj['name']} (Класс: {obj['class']})")
                 logger.info(f"  UUID: {obj['id']}")
-                
+
                 # Формируем ссылку на объект
-                object_url = f"{str(self.client.base_url).rstrip('/')}/objects?id={obj['id']}"
+                object_url = (
+                    f"{str(self.client.base_url).rstrip('/')}/objects?id={obj['id']}"
+                )
                 logger.info(f"  Ссылка: {object_url}")
-                
+
                 print(f"► {obj['name']} (Класс: {obj['class']})")
                 print(f"  UUID: {obj['id']}")
                 print(f"  Ссылка: {object_url}")
                 print("-" * 80)
-                
+
         logger.info(f"Создано {len(result)} объектов в Neosintez")
         return result
 
@@ -525,15 +527,19 @@ class NeosintezExcelImporter:
 
                 if attr_found:
                     # Преобразуем datetime в строку ISO формата, если это необходимо
-                    if hasattr(attr_value, 'isoformat'):
+                    if hasattr(attr_value, "isoformat"):
                         attr_value = attr_value.isoformat()
-                        
+
                     # Создаем объект атрибута в формате WioObjectAttribute
                     attribute_data = {
                         "Id": str(attr_found.Id),
                         "Name": attr_found.Name,
-                        "Type": attr_found.Type if isinstance(attr_found.Type, int) else attr_found.Type.Id if hasattr(attr_found.Type, 'Id') else None,
-                        "Value": attr_value
+                        "Type": attr_found.Type
+                        if isinstance(attr_found.Type, int)
+                        else attr_found.Type.Id
+                        if hasattr(attr_found.Type, "Id")
+                        else None,
+                        "Value": attr_value,
                     }
                     attributes_data.append(attribute_data)
                     logger.info(
@@ -566,66 +572,76 @@ class NeosintezExcelImporter:
     ) -> bool:
         """
         Устанавливает атрибуты объекта напрямую через API.
-        
+
         Args:
             object_id: ID объекта
             attributes: Словарь атрибутов (имя -> значение)
-            
+
         Returns:
             bool: True, если атрибуты успешно установлены
         """
         logger.info(f"Установка атрибутов для объекта {object_id} (прямой метод)")
-        
+
         try:
             # Получаем объект для определения его класса
             obj = await self.client.objects.get_by_id(object_id)
             entity_id = obj.EntityId
-            
+
             # Получаем атрибуты класса
             class_attributes = await self.load_class_attributes(str(entity_id))
-            
+
             # Формируем список атрибутов для обновления
             attributes_to_update = []
-            
+
             for attr_name, attr_value in attributes.items():
                 # Ищем атрибут в списке атрибутов класса
-                class_attr = next((a for a in class_attributes if a["Name"] == attr_name), None)
+                class_attr = next(
+                    (a for a in class_attributes if a["Name"] == attr_name), None
+                )
                 if class_attr:
                     attr_id = class_attr["Id"]
                     attr_type = class_attr["Type"]
-                    logger.info(f"Атрибут '{attr_name}' (ID: {attr_id}, тип: {attr_type}) будет установлен в '{attr_value}'")
-                    
+                    logger.info(
+                        f"Атрибут '{attr_name}' (ID: {attr_id}, тип: {attr_type}) будет установлен в '{attr_value}'"
+                    )
+
                     # Форматируем значение в зависимости от типа атрибута
                     formatted_value = self.format_attribute_value(attr_value, attr_type)
-                    
+
                     # Добавляем атрибут в список для обновления
-                    attributes_to_update.append({
-                        "Id": attr_id,
-                        "Name": attr_name,
-                        "Type": attr_type,
-                        "Value": formatted_value
-                    })
+                    attributes_to_update.append(
+                        {
+                            "Id": attr_id,
+                            "Name": attr_name,
+                            "Type": attr_type,
+                            "Value": formatted_value,
+                        }
+                    )
                 else:
-                    logger.warning(f"Атрибут '{attr_name}' не найден для класса {entity_id}")
-            
+                    logger.warning(
+                        f"Атрибут '{attr_name}' не найден для класса {entity_id}"
+                    )
+
             # Если нет атрибутов для обновления, возвращаем True
             if not attributes_to_update:
                 return True
-            
+
             # Отправляем запрос на обновление атрибутов напрямую через API
             async with self.client._session.put(
                 f"{self.client._api_url}/api/objects/{object_id}/attributes",
                 json=attributes_to_update,
-                headers=self.client._headers
+                headers=self.client._headers,
             ) as response:
                 if response.status == 200:
                     logger.info(f"Атрибуты объекта {object_id} успешно обновлены")
                     return True
                 else:
                     error_text = await response.text()
-                    logger.error(f"Ошибка при обновлении атрибутов объекта {object_id}: {error_text}")
+                    logger.error(
+                        f"Ошибка при обновлении атрибутов объекта {object_id}: {error_text}"
+                    )
                     return False
-                    
+
         except Exception as e:
             logger.error(f"Ошибка при установке атрибутов объекта {object_id}: {e}")
             traceback.print_exc()
@@ -634,11 +650,11 @@ class NeosintezExcelImporter:
     def format_attribute_value(self, value: Any, attr_type: int) -> Any:
         """
         Форматирует значение атрибута в зависимости от его типа.
-        
+
         Args:
             value: Значение атрибута
             attr_type: Тип атрибута
-            
+
         Returns:
             Отформатированное значение атрибута
         """
@@ -651,16 +667,16 @@ class NeosintezExcelImporter:
         # 6 - Текст
         # 7 - Флаг
         # 8 - Справочник
-        
+
         if attr_type == 1:  # Число
             try:
                 return float(value) if value is not None else None
             except (ValueError, TypeError):
                 return 0
-                
+
         elif attr_type == 2:  # Строка
             return str(value) if value is not None else None
-            
+
         elif attr_type == 3:  # Дата
             if isinstance(value, str):
                 try:
@@ -678,7 +694,7 @@ class NeosintezExcelImporter:
             elif isinstance(value, datetime):
                 return value.strftime("%Y-%m-%dT%H:%M:%S")
             return value
-            
+
         elif attr_type == 4:  # Ссылка
             if isinstance(value, dict) and "Id" in value and "Name" in value:
                 return value
@@ -690,10 +706,10 @@ class NeosintezExcelImporter:
                 except ValueError:
                     return {"Id": None, "Name": value}
             return None
-            
+
         elif attr_type == 6:  # Текст
             return str(value) if value is not None else None
-            
+
         elif attr_type == 7:  # Флаг
             if isinstance(value, bool):
                 return value
@@ -702,7 +718,7 @@ class NeosintezExcelImporter:
             elif isinstance(value, (int, float)):
                 return value > 0
             return False
-            
+
         elif attr_type == 8:  # Справочник
             if isinstance(value, dict) and "Id" in value and "Name" in value:
                 return value
@@ -714,11 +730,13 @@ class NeosintezExcelImporter:
                 except ValueError:
                     return {"Id": None, "Name": value}
             return None
-            
+
         # Для всех остальных типов возвращаем значение без изменений
         return value
 
-    async def verify_created_objects_by_id(self, created_objects: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def verify_created_objects_by_id(
+        self, created_objects: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """
         Проверяет наличие созданных объектов путем запроса каждого объекта по его ID.
         Более надежный метод, чем verify_imported_objects, так как не зависит от структуры родительского объекта.
@@ -754,7 +772,7 @@ class NeosintezExcelImporter:
                             "name": obj_name,
                             "id": obj_id,
                             "status": "найден",
-                            "system_name": found_obj.Name
+                            "system_name": found_obj.Name,
                         }
                     )
                     logger.info(f"Объект найден: {found_obj.Name} (ID: {obj_id})")
@@ -765,10 +783,12 @@ class NeosintezExcelImporter:
                             "name": obj_name,
                             "id": obj_id,
                             "status": "не найден",
-                            "error": str(e)
+                            "error": str(e),
                         }
                     )
-                    logger.warning(f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {str(e)}")
+                    logger.warning(
+                        f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {str(e)}"
+                    )
             else:
                 verification_results["missing_objects"] += 1
                 verification_results["details"].append(
@@ -776,7 +796,7 @@ class NeosintezExcelImporter:
                         "name": obj_name,
                         "id": "не указан",
                         "status": "не найден",
-                        "error": "ID не указан"
+                        "error": "ID не указан",
                     }
                 )
                 logger.warning(f"Объект не имеет ID: {obj_name}")
@@ -904,21 +924,29 @@ class NeosintezExcelImporter:
             # Создаем объекты в Neosintez
             created_objects = await self.create_objects_in_neosintez(objects)
             logger.info(f"Создано {len(created_objects)} объектов в Neosintez")
-            
+
             # Проверяем наличие созданных объектов
             logger.info("Проверка наличия созданных объектов путем запроса по ID")
             verified_objects = []
             for obj in created_objects:
                 if "neosintez_id" in obj:
                     try:
-                        neosintez_obj = await self.client.objects.get_by_id(obj["neosintez_id"])
-                        logger.info(f"Объект найден: {neosintez_obj.Name} (ID: {neosintez_obj.Id})")
+                        neosintez_obj = await self.client.objects.get_by_id(
+                            obj["neosintez_id"]
+                        )
+                        logger.info(
+                            f"Объект найден: {neosintez_obj.Name} (ID: {neosintez_obj.Id})"
+                        )
                         verified_objects.append(obj)
                     except Exception as e:
-                        logger.error(f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {str(e)}")
-            
-            logger.info(f"Проверка завершена. Найдено: {len(verified_objects)} из {len(created_objects)} объектов")
-            
+                        logger.error(
+                            f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {str(e)}"
+                        )
+
+            logger.info(
+                f"Проверка завершена. Найдено: {len(verified_objects)} из {len(created_objects)} объектов"
+            )
+
             # Сохраняем результат в файл
             result = {
                 "objects": created_objects,
@@ -927,7 +955,7 @@ class NeosintezExcelImporter:
                 "timestamp": datetime.now().isoformat(),
             }
             self.save_result(result, "import_result.json")
-            
+
             # Выводим статистику по созданным объектам
             class_stats = {}
             for obj in created_objects:
@@ -935,11 +963,11 @@ class NeosintezExcelImporter:
                 if class_name not in class_stats:
                     class_stats[class_name] = 0
                 class_stats[class_name] += 1
-            
+
             logger.info("Сводка по импортированным объектам:")
             for class_name, count in class_stats.items():
                 logger.info(f"  {class_name}: {count} объектов")
-                
+
             # Выводим информацию о созданных объектах первого уровня
             root_level_objects = [obj for obj in created_objects if obj["level"] == 1]
             if root_level_objects:
@@ -954,25 +982,37 @@ class NeosintezExcelImporter:
                         print(f"  UUID: {obj['neosintez_id']}")
                         print(f"  Ссылка: {object_url}")
                         print("-" * 80)
-            
+
             # Проверяем наличие созданных объектов еще раз
             logger.info("Проверка наличия созданных объектов путем запроса по ID")
             verified_count = 0
             for obj in created_objects:
                 if "neosintez_id" in obj:
                     try:
-                        neosintez_obj = await self.client.objects.get_by_id(obj["neosintez_id"])
-                        logger.info(f"Объект найден: {neosintez_obj.Name} (ID: {neosintez_obj.Id})")
+                        neosintez_obj = await self.client.objects.get_by_id(
+                            obj["neosintez_id"]
+                        )
+                        logger.info(
+                            f"Объект найден: {neosintez_obj.Name} (ID: {neosintez_obj.Id})"
+                        )
                         verified_count += 1
                     except Exception as e:
-                        logger.error(f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {str(e)}")
-            
-            logger.info(f"Проверка завершена. Найдено: {verified_count} из {len(created_objects)} объектов")
-            
+                        logger.error(
+                            f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {str(e)}"
+                        )
+
+            logger.info(
+                f"Проверка завершена. Найдено: {verified_count} из {len(created_objects)} объектов"
+            )
+
             return result
 
     async def create_object_with_attributes(
-        self, name: str, entity_class_id: str, parent_id: str, attributes: Dict[str, Any]
+        self,
+        name: str,
+        entity_class_id: str,
+        parent_id: str,
+        attributes: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """
         Создает объект с указанными атрибутами.
@@ -996,16 +1036,13 @@ class NeosintezExcelImporter:
                 "Name": name,
                 "Entity": {
                     "Id": entity_class_id,
-                    "Name": "Класс объекта"  # Добавляем обязательное поле Name
+                    "Name": "Класс объекта",  # Добавляем обязательное поле Name
                 },
-                "Description": ""
+                "Description": "",
             }
 
             # Создаем объект
-            object_id = await self.client.objects.create(
-                parent_id=parent_id,
-                data=data
-            )
+            object_id = await self.client.objects.create(parent_id=parent_id, data=data)
 
             if object_id:
                 logger.info(f"Объект '{name}' успешно создан с ID {object_id}")
@@ -1027,21 +1064,21 @@ class NeosintezExcelImporter:
     def save_result(self, result: Dict[str, Any], filename: str) -> None:
         """
         Сохраняет результат импорта в JSON-файл.
-        
+
         Args:
             result: Результаты импорта
             filename: Имя файла для сохранения
         """
-        import os
+
         data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
             logger.info(f"Создана директория {data_dir}")
-            
+
         file_path = os.path.join(data_dir, filename)
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
-            
+
         logger.info(f"Результат сохранен в {file_path}")
 
 
@@ -1056,24 +1093,40 @@ async def main():
 
         # Определяем режим работы (тестовый или реальный импорт)
         import argparse
-        parser = argparse.ArgumentParser(description="Импорт данных из Excel в Neosintez")
-        parser.add_argument("--test", action="store_true", help="Запуск в тестовом режиме без создания объектов")
-        parser.add_argument("--file", default="simple_import.xlsx", help="Имя Excel файла в папке data (по умолчанию: simple_import.xlsx)")
-        parser.add_argument("--parent", default="a7928b22-5a25-f011-91dd-005056b6948b", help="ID родительского объекта (по умолчанию: a7928b22-5a25-f011-91dd-005056b6948b)")
+
+        parser = argparse.ArgumentParser(
+            description="Импорт данных из Excel в Neosintez"
+        )
+        parser.add_argument(
+            "--test",
+            action="store_true",
+            help="Запуск в тестовом режиме без создания объектов",
+        )
+        parser.add_argument(
+            "--file",
+            default="simple_import.xlsx",
+            help="Имя Excel файла в папке data (по умолчанию: simple_import.xlsx)",
+        )
+        parser.add_argument(
+            "--parent",
+            default="a7928b22-5a25-f011-91dd-005056b6948b",
+            help="ID родительского объекта (по умолчанию: a7928b22-5a25-f011-91dd-005056b6948b)",
+        )
         args = parser.parse_args()
-        
+
         # Проверяем наличие файла
         import os
+
         data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
             logger.info(f"Создана директория {data_dir}")
-            
+
         excel_path = os.path.join(data_dir, args.file)
         if not os.path.exists(excel_path):
             logger.error(f"Файл {excel_path} не найден")
             return
-            
+
         logger.info(f"Используется файл {excel_path}")
         logger.info(f"ID родительского объекта: {args.parent}")
         logger.info(f"Тестовый режим: {args.test}")
@@ -1083,19 +1136,25 @@ async def main():
             # Проверяем существование родительского объекта
             try:
                 parent_object = await client.objects.get_by_id(args.parent)
-                logger.info(f"Родительский объект: {parent_object.Name} (ID: {parent_object.Id})")
+                logger.info(
+                    f"Родительский объект: {parent_object.Name} (ID: {parent_object.Id})"
+                )
             except Exception as e:
                 logger.error(f"Ошибка при получении родительского объекта: {str(e)}")
                 return
 
             # Создаем импортер и запускаем импорт
-            importer = NeosintezExcelImporter(client=client, excel_path=excel_path, target_object_id=args.parent)
+            importer = NeosintezExcelImporter(
+                client=client, excel_path=excel_path, target_object_id=args.parent
+            )
             result = await importer.process_import(test_mode=args.test)
 
             # Выводим сводку об импорте
             if args.test:
-                logger.info("Тестовый режим завершен. Объекты не были созданы в Neosintez.")
-                
+                logger.info(
+                    "Тестовый режим завершен. Объекты не были созданы в Neosintez."
+                )
+
                 # Выводим сводку по объектам
                 classes_count = {}
                 for obj in result["objects"]:
@@ -1103,13 +1162,15 @@ async def main():
                     if class_name not in classes_count:
                         classes_count[class_name] = 0
                     classes_count[class_name] += 1
-                
+
                 logger.info("Сводка по объектам:")
                 for class_name, count in classes_count.items():
                     logger.info(f"  {class_name}: {count} объектов")
             else:
-                logger.info("Импорт завершен. Результат сохранен в data/import_result.json")
-                
+                logger.info(
+                    "Импорт завершен. Результат сохранен в data/import_result.json"
+                )
+
                 # Выводим сводку по созданным объектам
                 classes_count = {}
                 for obj in result["objects"]:
@@ -1117,13 +1178,15 @@ async def main():
                     if class_name not in classes_count:
                         classes_count[class_name] = 0
                     classes_count[class_name] += 1
-                
+
                 logger.info("Сводка по импортированным объектам:")
                 for class_name, count in classes_count.items():
                     logger.info(f"  {class_name}: {count} объектов")
-                
+
                 # Выводим информацию о созданных объектах первого уровня
-                root_level_objects = [obj for obj in result["objects"] if obj["level"] == 1]
+                root_level_objects = [
+                    obj for obj in result["objects"] if obj["level"] == 1
+                ]
                 if root_level_objects:
                     print("\n" + "=" * 80)
                     print("СОЗДАННЫЕ КЛЮЧЕВЫЕ ОБЪЕКТЫ (уровень 1):")

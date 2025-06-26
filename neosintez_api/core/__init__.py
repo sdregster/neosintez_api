@@ -1,10 +1,10 @@
 """
-Пакет для работы с API Неосинтез через Python.
+Основные компоненты для работы с API Неосинтез.
+Этот пакет содержит core-функциональность для взаимодействия с API Неосинтез.
 """
 
-from .config import NeosintezSettings, load_settings
-from .core import (
-    NeosintezClient,
+from .client import NeosintezClient
+from .exceptions import (
     NeosintezError,
     NeosintezAuthError,
     NeosintezAPIError,
@@ -14,8 +14,6 @@ from .core import (
 )
 
 __all__ = [
-    "NeosintezSettings",
-    "load_settings",
     "NeosintezClient",
     "NeosintezError",
     "NeosintezAuthError",
@@ -24,5 +22,3 @@ __all__ = [
     "NeosintezTimeoutError",
     "NeosintezValidationError",
 ]
-
-__version__ = "0.1.0"

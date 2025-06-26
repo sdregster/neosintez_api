@@ -14,7 +14,7 @@ class AttributesResource(BaseResource):
     """
     Ресурсный класс для работы с атрибутами в API Неосинтез.
     """
-    
+
     def __init__(self, client):
         """
         Инициализирует ресурс с родительским клиентом.
@@ -89,7 +89,7 @@ class AttributesResource(BaseResource):
     ) -> bool:
         """
         Обновляет значения атрибутов для указанного объекта.
-        
+
         DEPRECATED: Этот метод устарел и может работать некорректно.
         Используйте вместо него метод set_attributes.
 
@@ -108,7 +108,7 @@ class AttributesResource(BaseResource):
 
         await self._request("PUT", endpoint, data=attributes_values)
         return True
-        
+
     async def set_attributes(
         self,
         object_id: Union[str, UUID],
@@ -116,13 +116,13 @@ class AttributesResource(BaseResource):
     ) -> bool:
         """
         Устанавливает атрибуты для указанного объекта.
-        
+
         Каждый атрибут в списке должен содержать следующие поля:
         - Id: UUID атрибута
         - Name: Имя атрибута
         - Type: Тип атрибута (число)
         - Value: Значение атрибута
-        
+
         Пример:
         ```python
         attributes = [
@@ -149,26 +149,26 @@ class AttributesResource(BaseResource):
             self._logger.info(f"Атрибуты объекта {object_id} успешно обновлены")
             return True
         except Exception as e:
-            self._logger.error(f"Ошибка при установке атрибутов объекта {object_id}: {str(e)}")
+            self._logger.error(
+                f"Ошибка при установке атрибутов объекта {object_id}: {str(e)}"
+            )
             return False
-            
+
     async def get_value(
-        self,
-        object_id: Union[str, UUID],
-        attribute_id: Union[str, UUID]
+        self, object_id: Union[str, UUID], attribute_id: Union[str, UUID]
     ) -> Optional[Any]:
         """
         Получает значение атрибута для указанного объекта.
-        
+
         Args:
             object_id: Идентификатор объекта
             attribute_id: Идентификатор атрибута
-            
+
         Returns:
             Optional[Any]: Значение атрибута или None, если атрибут не найден
         """
         endpoint = f"api/objects/{object_id}/attributes/{attribute_id}"
-        
+
         try:
             result = await self._request("GET", endpoint)
             if isinstance(result, dict) and "Value" in result:
@@ -178,5 +178,5 @@ class AttributesResource(BaseResource):
                 f"Ошибка при получении значения атрибута {attribute_id} "
                 f"для объекта {object_id}: {str(e)}"
             )
-        
+
         return None
