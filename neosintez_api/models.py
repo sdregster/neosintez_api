@@ -2,10 +2,12 @@
 Модели данных для работы с API Неосинтез.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
 
 
 class TokenResponse(BaseModel):
@@ -220,3 +222,57 @@ class PathResponse(BaseModel):
     """
 
     AncestorsOrSelf: List[PathAncestor]
+
+
+class AttributeModel(BaseModel):
+    """
+    Модель атрибута для работы с API Неосинтеза.
+
+    Attributes:
+        id: Идентификатор атрибута
+        name: Название атрибута
+        value: Значение атрибута
+        value_type: Тип значения атрибута
+    """
+
+    id: UUID = Field(alias="Id")
+    name: str = Field(alias="Name")
+    value: Any = Field(alias="Value")
+    value_type: Optional[int] = Field(None, alias="Type")
+
+    class Config:
+        """Конфигурация модели."""
+
+        allow_population_by_field_name = True
+        """Разрешает заполнение модели как по именам полей, так и по алиасам."""
+
+
+class EquipmentModel(BaseModel):
+    """
+    Пример модели оборудования с использованием алиасов для маппинга полей.
+
+    Это пример модели, которая демонстрирует использование Field(alias=...)
+    для маппинга между названиями полей в Python-коде и названиями атрибутов в API.
+
+    Attributes:
+        name: Название оборудования
+        model: Модель оборудования
+        serial_number: Серийный номер оборудования
+        installation_date: Дата установки оборудования
+        is_active: Флаг активности оборудования
+    """
+
+    __class_name__ = "Оборудование"
+    """Имя класса объекта в Неосинтезе"""
+
+    name: str = Field(alias="Name")
+    model: str = Field(alias="Модель оборудования")
+    serial_number: str = Field(alias="Серийный номер")
+    installation_date: datetime = Field(alias="Дата установки")
+    is_active: bool = Field(True, alias="Активен")
+
+    class Config:
+        """Конфигурация модели."""
+
+        allow_population_by_field_name = True
+        """Разрешает заполнение модели как по именам полей, так и по алиасам."""

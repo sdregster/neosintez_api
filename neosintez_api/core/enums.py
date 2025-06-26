@@ -5,32 +5,58 @@
 from enum import Enum, auto
 
 
-class WioAttributeType(str, Enum):
+class WioAttributeType(int, Enum):
     """Типы атрибутов в API Неосинтез."""
 
-    STRING = "String"
+    NUMBER = 1
+    """Числовой тип."""
+
+    STRING = 2
     """Строковый тип."""
 
-    INTEGER = "Integer"
-    """Целочисленный тип."""
+    DATE = 3
+    """Тип даты (без времени)."""
 
-    DECIMAL = "Decimal"
-    """Десятичный тип."""
+    TIME = 4
+    """Тип времени (без даты)."""
 
-    DATETIME = "DateTime"
+    DATETIME = 5
     """Тип даты и времени."""
 
-    REFERENCE = "Reference"
-    """Ссылочный тип."""
+    TEXT = 6
+    """Текстовый тип (поддерживает форматирование)."""
 
-    BOOLEAN = "Boolean"
-    """Логический тип."""
+    FILE = 7
+    """Файловый тип."""
 
-    COLLECTION = "Collection"
+    OBJECT_LINK = 8
+    """Ссылочный тип на другой объект."""
+
+    COLLECTION = 9
     """Коллекционный тип."""
 
-    FILE = "File"
-    """Файловый тип."""
+    REFERENCE_COLLECTION = 10
+    """Коллекция ссылок на объекты."""
+
+    TEMPLATE = 15
+    """Шаблонный тип."""
+
+    @property
+    def as_string(self) -> str:
+        """Возвращает строковое представление типа атрибута."""
+        return {
+            WioAttributeType.NUMBER: "Number",
+            WioAttributeType.STRING: "String",
+            WioAttributeType.DATE: "Date",
+            WioAttributeType.TIME: "Time",
+            WioAttributeType.DATETIME: "DateTime",
+            WioAttributeType.TEXT: "Text",
+            WioAttributeType.FILE: "File",
+            WioAttributeType.OBJECT_LINK: "ObjectLink",
+            WioAttributeType.COLLECTION: "Collection",
+            WioAttributeType.REFERENCE_COLLECTION: "ReferenceCollection",
+            WioAttributeType.TEMPLATE: "Template",
+        }.get(self, "Unknown")
 
 
 class HTTPMethod(str, Enum):

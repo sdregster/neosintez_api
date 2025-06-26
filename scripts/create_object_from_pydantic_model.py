@@ -153,13 +153,32 @@ async def get_entity_meta(client: NeosintezClient, class_name: str) -> Dict[str,
 def build_attribute_body(attr_meta: Dict[str, Any], value: Any) -> Dict[str, Any]:
     """
     Превращает «сырое» значение из модели в тело атрибута WioObjectAttribute.
+
+    Args:
+        attr_meta: Метаданные атрибута
+        value: Значение атрибута
+
+    Returns:
+        Dict[str, Any]: Тело атрибута для API запроса
     """
-    return {
-        "Name": attr_meta["Name"],  # Используем реальное имя атрибута
-        "Id": attr_meta["Id"],
-        "Type": attr_meta["Type"],
-        "Value": value,
-    }
+    # Импортируем функции из utils
+    from neosintez_api.utils import build_attribute_body as utils_build_attribute_body
+
+    # Используем функцию build_attribute_body из utils
+    try:
+        return utils_build_attribute_body(attr_meta, value)
+    except Exception as e:
+        logger.warning(
+            f"Ошибка при создании тела атрибута: {str(e)}. Используем обычную версию."
+        )
+
+        # Используем обычную версию функции как запасной вариант
+        return {
+            "Name": attr_meta["Name"],
+            "Id": attr_meta["Id"],
+            "Type": attr_meta["Type"],
+            "Value": value,
+        }
 
 
 # ────────────────────────────

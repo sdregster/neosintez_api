@@ -6,13 +6,27 @@ import asyncio
 import json
 import logging
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    TypeVar,
+    get_origin,
+    get_args,
+)
+from datetime import date, time, datetime
+from decimal import Decimal
+from uuid import UUID
 
 import aiohttp
 
+from .core.enums import WioAttributeType
 from .exceptions import (
     NeosintezConnectionError,
     NeosintezTimeoutError,
+    NeosintezValidationError,
 )
 
 # Настройка логирования
@@ -188,3 +202,210 @@ def chunk_list(items: List[Any], size: int) -> List[List[Any]]:
         List[List[Any]]: Список частей исходного списка
     """
     return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Маппинг типов атрибутов
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Таблица соответствия типов Python типам атрибутов в API Неосинтеза
+PYTHON_TO_WIO_TYPE_MAPPING = {
+    # Строковые типы
+    str: WioAttributeType.STRING,
+    # Числовые типы
+    int: WioAttributeType.NUMBER,
+    float: WioAttributeType.NUMBER,
+    Decimal: WioAttributeType.NUMBER,
+    # Временные типы
+    datetime: WioAttributeType.DATETIME,
+    date: WioAttributeType.DATE,
+    time: WioAttributeType.TIME,
+    # Логические типы - будут преобразованы в числовые (0/1)
+    bool: WioAttributeType.NUMBER,
+    # Специальные типы (UUID считаем за строковый тип)
+    UUID: WioAttributeType.STRING,
+    # Списки и коллекции - по умолчанию обычная коллекция,
+    # но нужно проверять дополнительно, если List[UUID] - это ReferenceCollection
+    list: WioAttributeType.COLLECTION,
+    List: WioAttributeType.COLLECTION,
+}
+
+
+def get_wio_attribute_type(python_type: type) -> WioAttributeType:
+    """
+    Определяет тип атрибута Неосинтеза на основе типа Python.
+
+    Args:
+        python_type: Тип данных Python
+
+    Returns:
+        WioAttributeType: Соответствующий тип атрибута для API Неосинтеза
+
+    Raises:
+        NeosintezValidationError: Если тип не может быть преобразован
+    """
+    # Проверяем, является ли тип параметризованным (например, List[str])
+    origin = get_origin(python_type)
+    args = get_args(python_type)
+
+    # Проверяем случай List[UUID] - это коллекция ссылок на объекты
+    if origin is list or origin is List:
+        if args and args[0] is UUID:
+            return WioAttributeType.REFERENCE_COLLECTION
+        return WioAttributeType.COLLECTION
+
+    # Проверяем обычный тип
+    if python_type in PYTHON_TO_WIO_TYPE_MAPPING:
+        return PYTHON_TO_WIO_TYPE_MAPPING[python_type]
+
+    # Тип не поддерживается
+    raise NeosintezValidationError(
+        f"Тип Python '{python_type}' не поддерживается для атрибутов Неосинтеза"
+    )
+
+
+def convert_value_to_wio_format(value: Any, wio_type: WioAttributeType) -> Any:
+    """
+    Конвертирует Python-значение в формат, понятный API Неосинтеза.
+
+    Args:
+        value: Исходное значение
+        wio_type: Тип атрибута в API Неосинтеза
+
+    Returns:
+        Any: Преобразованное значение
+
+    Raises:
+        NeosintezValidationError: Если значение не может быть преобразовано
+    """
+    # None всегда возвращаем как есть
+    if value is None:
+        return None
+
+    # Преобразование в зависимости от типа
+    try:
+        if wio_type == WioAttributeType.STRING:
+            # Строковый тип
+            if isinstance(value, UUID):
+                return str(value)
+            return str(value)
+
+        elif wio_type == WioAttributeType.NUMBER:
+            # Числовой тип
+            if isinstance(value, bool):
+                return 1 if value else 0
+            return float(value)
+
+        elif wio_type == WioAttributeType.DATE:
+            # Тип даты
+            if isinstance(value, datetime):
+                return value.strftime("%Y-%m-%d")
+            if isinstance(value, date):
+                return value.strftime("%Y-%m-%d")
+            return str(value)
+
+        elif wio_type == WioAttributeType.TIME:
+            # Тип времени
+            if isinstance(value, datetime):
+                return value.strftime("%H:%M:%S")
+            if isinstance(value, time):
+                return value.strftime("%H:%M:%S")
+            return str(value)
+
+        elif wio_type == WioAttributeType.DATETIME:
+            # Тип даты и времени
+            if isinstance(value, (datetime, date)):
+                return value.isoformat()
+            return str(value)
+
+        elif wio_type == WioAttributeType.OBJECT_LINK:
+            # Ссылка на объект (UUID)
+            if isinstance(value, UUID):
+                return str(value)
+            return str(value)
+
+        elif wio_type in (
+            WioAttributeType.COLLECTION,
+            WioAttributeType.REFERENCE_COLLECTION,
+        ):
+            # Коллекция
+            if not isinstance(value, list):
+                value = [value]
+
+            # Для коллекции ссылок преобразуем все элементы в строки UUID
+            if wio_type == WioAttributeType.REFERENCE_COLLECTION:
+                return [str(item) if isinstance(item, UUID) else item for item in value]
+
+            return value
+
+        # Для остальных типов просто возвращаем значение как есть
+        return value
+
+    except (ValueError, TypeError) as e:
+        raise NeosintezValidationError(
+            f"Не удалось преобразовать значение '{value}' в тип '{wio_type.as_string}': {str(e)}"
+        )
+
+
+def build_attribute_body(
+    attr_meta: Dict[str, Any], value: Any, attr_type: Optional[WioAttributeType] = None
+) -> Dict[str, Any]:
+    """
+    Создает тело запроса для атрибута с валидацией и конвертацией типов.
+
+    Args:
+        attr_meta: Метаданные атрибута из API
+        value: Значение атрибута
+        attr_type: Явно указанный тип атрибута (если известен)
+
+    Returns:
+        Dict[str, Any]: Тело атрибута для API запроса
+
+    Raises:
+        NeosintezValidationError: Если значение не может быть преобразовано
+    """
+    # Определяем тип атрибута
+    if attr_type is None:
+        # Пытаемся получить тип из метаданных атрибута
+        meta_type = attr_meta.get("Type")
+        if isinstance(meta_type, int):
+            try:
+                attr_type = WioAttributeType(meta_type)
+            except ValueError:
+                raise NeosintezValidationError(
+                    f"Неизвестный тип атрибута в API: {meta_type}"
+                )
+        else:
+            # Пытаемся определить тип по значению
+            python_type = type(value)
+            attr_type = get_wio_attribute_type(python_type)
+
+    # Конвертируем значение
+    converted_value = convert_value_to_wio_format(value, attr_type)
+
+    # Формируем тело запроса
+    return {
+        "Name": attr_meta["Name"],
+        "Id": attr_meta["Id"],
+        "Type": attr_type.value,  # Передаем числовое значение типа
+        "Value": converted_value,
+    }
+
+
+def get_field_external_name(model_class: type, field_name: str) -> str:
+    """
+    Получает имя поля для внешнего API на основе модели Pydantic.
+    Учитывает alias, если он задан через Field(alias=...).
+
+    Args:
+        model_class: Класс модели Pydantic
+        field_name: Имя поля в Python-коде
+
+    Returns:
+        str: Имя поля для API (alias или оригинальное имя)
+    """
+    # Получаем информацию о поле из модели
+    field_info = model_class.__fields__.get(field_name)
+    if field_info and field_info.alias != field_name:
+        return field_info.alias
+    return field_name
