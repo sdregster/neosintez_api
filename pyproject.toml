@@ -25,6 +25,8 @@ dependencies = [
     "httpx>=0.24.0",
     "pydantic>=2.0.0",
     "typing-extensions>=4.0.0",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
 ]
 dynamic = ["version"]
 
@@ -49,6 +51,22 @@ dev = [
 # Длина строки
 line-length = 120
 
+# Исключенные папки и файлы
+exclude = [
+    ".git",
+    "__pycache__",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "env",
+    ".env",
+    "neosintez_api/core/generated/",  # Автогенерируемые файлы
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
 # Включенные правила
 select = [
     "E",   # pycodestyle errors
@@ -67,23 +85,8 @@ ignore = [
     "RUF003",  # Амбигуозные символы кириллицы в комментариях
 ]
 
-# Исключенные папки и файлы
-exclude = [
-    ".git",
-    "__pycache__",
-    ".ruff_cache",
-    ".venv",
-    "venv",
-    "env",
-    ".env",
-    "neosintez_api/core/generated/",  # Автогенерируемые файлы
-    "build",
-    "dist",
-    "*.egg-info",
-]
-
 # Игнорируемые ошибки для конкретных файлов
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "neosintez_api/core/generated/*" = [
     "F403",  # star imports
     "F405",  # undefined names from star imports
@@ -104,7 +107,7 @@ quote-style = "double"
 # Отступы пробелами
 indent-style = "space"
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 # Настройки сортировки импортов
 known-first-party = ["neosintez_api"]
 force-single-line = false
