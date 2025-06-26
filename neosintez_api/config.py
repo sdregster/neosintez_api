@@ -20,6 +20,7 @@ class NeosintezSettings(BaseSettings):
         client_secret: Секрет клиента
         max_connections: Максимальное количество одновременных соединений
         timeout: Таймаут запроса в секундах
+        verify_ssl: Проверять SSL сертификаты
         test_folder_id: ID тестовой папки для создания объектов в тестах
     """
 
@@ -30,6 +31,7 @@ class NeosintezSettings(BaseSettings):
     client_secret: str
     max_connections: int = 100
     timeout: int = 60
+    verify_ssl: bool = True
     test_folder_id: Optional[str] = None
 
     class Config:

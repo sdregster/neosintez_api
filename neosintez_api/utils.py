@@ -426,8 +426,7 @@ def build_attribute_body(
     attr_meta: Dict[str, Any], value: Any, attr_type: Optional[WioAttributeType] = None
 ) -> Dict[str, Any]:
     """
-    Создает тело атрибута для API в старом формате (список атрибутов с Id и Value).
-    Рекомендуется использовать format_attribute_value вместо этой функции.
+    Создает тело атрибута для API.
     
     Args:
         attr_meta: Метаданные атрибута
@@ -435,16 +434,45 @@ def build_attribute_body(
         attr_type: Явно указанный тип атрибута (если известен)
         
     Returns:
-        Dict[str, Any]: Тело атрибута для API запроса
+        Dict[str, Any]: Тело атрибута для API запроса (только Id, Value, Type)
     """
+    # Получаем ID атрибута
     attr_id = attr_meta["Id"] if isinstance(attr_meta, dict) else attr_meta.Id
     attr_id = str(attr_id)
     
-    formatted_value = format_attribute_value(attr_meta, value)
-        
+    # Получаем тип атрибута из метаданных (это приоритет)
+    api_attr_type = attr_meta.get("Type") if isinstance(attr_meta, dict) else getattr(attr_meta, "Type", None)
+    
+    # Если тип не указан в метаданных, определяем его по значению
+    if api_attr_type is None:
+        if attr_type:
+            api_attr_type = attr_type.value if hasattr(attr_type, 'value') else attr_type
+        else:
+            # Простая логика определения типа по значению
+            if isinstance(value, int):
+                api_attr_type = 1  # INTEGER в API
+            elif isinstance(value, str):
+                api_attr_type = 2  # STRING в API
+            elif isinstance(value, float):
+                api_attr_type = 3  # FLOAT в API
+            elif isinstance(value, bool):
+                api_attr_type = 4  # BOOLEAN в API
+            else:
+                api_attr_type = 2  # По умолчанию STRING
+    
+    # Простое форматирование значения
+    if value is None:
+        formatted_value = None
+    elif isinstance(value, (str, int, float, bool)):
+        formatted_value = value  # Оставляем как есть для простых типов
+    else:
+        formatted_value = str(value)  # Преобразуем в строку для сложных типов
+    
+    # Возвращаем только необходимые поля (как в simple_create_object.py)
     return {
         "Id": attr_id,
-        "Value": formatted_value
+        "Value": formatted_value,
+        "Type": api_attr_type
     }
 
 

@@ -390,3 +390,5 @@ class NeosintezClient:
         except Exception as e:
             logger.error(f"Неожиданная ошибка: {str(e)}")
             raise
+
+__all__ = ["NeosintezClient", "NeosintezSettings"]

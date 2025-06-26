@@ -23,7 +23,7 @@ class ObjectMapper:
             attr_meta_by_name: Словарь метаданных атрибутов по имени
             
         Returns:
-            List[Dict[str, Any]]: Список атрибутов для API в формате [{\"Id\": \"...\", \"Value\": \"...\"}, ...]
+            List[Dict[str, Any]]: Список атрибутов для API в формате [{"Id": "...", "Value": "..."}, ...]
         """
         attributes = []
         model_data = model.model_dump(by_alias=True)
@@ -35,49 +35,17 @@ class ObjectMapper:
             if attr_name in attr_meta_by_name:
                 attr_meta = attr_meta_by_name[attr_name]
                 attr_id = attr_meta.get("Id") if isinstance(attr_meta, dict) else getattr(attr_meta, "Id", None)
-                attr_type = attr_meta.get("Type") if isinstance(attr_meta, dict) else getattr(attr_meta, "Type", None)
                 
                 if attr_id:
-                    # Определяем тип атрибута, если он не указан
-                    if attr_type is None:
-                        if isinstance(value, int):
-                            attr_type = 1  # INTEGER
-                        elif isinstance(value, str):
-                            attr_type = 2  # STRING
-                        elif isinstance(value, float):
-                            attr_type = 3  # FLOAT
-                        elif isinstance(value, bool):
-                            attr_type = 4  # BOOLEAN
-                        else:
-                            attr_type = 2  # По умолчанию STRING
+                    # Конвертируем UUID в строку если необходимо
+                    attr_id_str = str(attr_id)
                     
-                    # Преобразуем значение в соответствии с типом атрибута
-                    formatted_value = value
-                    if attr_type == 1:  # INTEGER
-                        try:
-                            formatted_value = int(value)
-                        except (ValueError, TypeError):
-                            formatted_value = 0
-                    elif attr_type == 2:  # STRING
-                        formatted_value = str(value)
-                    elif attr_type == 3:  # FLOAT
-                        try:
-                            formatted_value = float(value)
-                        except (ValueError, TypeError):
-                            formatted_value = 0.0
-                    elif attr_type == 4:  # BOOLEAN
-                        formatted_value = bool(value)
+                    # Используем build_attribute_body для правильного форматирования
+                    attr_obj = build_attribute_body(attr_meta, value)
                     
-                    # Создаем атрибут в формате, который ожидает API
-                    attr_obj = {
-                        "Id": attr_id,
-                        "Name": "forvalidation",  # Используем фиксированное имя, как в примере
-                        "Type": attr_type,
-                        "Value": formatted_value,
-                        "Constraints": []
-                    }
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(f"Добавлен атрибут {attr_name}={value}")
                     
-                    logger.debug(f"Добавлен атрибут {attr_name}={formatted_value}, тип={attr_type}")
                     attributes.append(attr_obj)
                 else:
                     logger.warning(f"Атрибут {attr_name} не имеет ID в метаданных")
@@ -112,7 +80,8 @@ class ObjectMapper:
                         for field_name, field_info in model_class.model_fields.items():
                             if field_info.alias == attr_name or field_name == attr_name:
                                 model_data[field_name] = attr_value
-                                logger.debug(f"Установлено поле {field_name}={attr_value}")
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    logger.debug(f"Установлено поле {field_name}={attr_value}")
                                 break
         
         return model_class(**model_data) 
