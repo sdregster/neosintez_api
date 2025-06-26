@@ -8,9 +8,9 @@ import logging
 import os
 import sys
 import traceback
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-from datetime import datetime
 
 import pandas as pd
 
@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.models import EntityClass
+
 
 load_dotenv()
 
@@ -119,7 +120,7 @@ class NeosintezExcelImporter:
 
             return self.df
         except Exception as e:
-            logger.error(f"Ошибка при загрузке Excel файла: {str(e)}")
+            logger.error(f"Ошибка при загрузке Excel файла: {e!s}")
             raise
 
     def _check_headers(self):
@@ -260,7 +261,7 @@ class NeosintezExcelImporter:
             logger.info(f"Получено {len(entities)} классов")
             return self.classes
         except Exception as e:
-            logger.error(f"Ошибка при получении классов: {str(e)}")
+            logger.error(f"Ошибка при получении классов: {e!s}")
             raise
 
     async def load_class_attributes(self, class_id: str) -> List[Any]:
@@ -279,7 +280,7 @@ class NeosintezExcelImporter:
             logger.info(f"Получено {len(attributes)} атрибутов для класса {class_id}")
             return attributes
         except Exception as e:
-            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {str(e)}")
+            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {e!s}")
             return []
 
     async def build_object_hierarchy(self) -> List[Dict[str, Any]]:
@@ -459,7 +460,7 @@ class NeosintezExcelImporter:
                 else:
                     logger.error(f"Не удалось создать объект {obj['name']}")
             except Exception as e:
-                logger.error(f"Ошибка при создании объекта {obj['name']}: {str(e)}")
+                logger.error(f"Ошибка при создании объекта {obj['name']}: {e!s}")
                 traceback.print_exc(file=sys.stderr)
 
         # Выводим информацию о созданных ключевых объектах
@@ -563,7 +564,7 @@ class NeosintezExcelImporter:
 
         except Exception as e:
             logger.error(
-                f"Ошибка при установке атрибутов объекта {object_id}: {str(e)}"
+                f"Ошибка при установке атрибутов объекта {object_id}: {e!s}"
             )
             return False
 
@@ -787,7 +788,7 @@ class NeosintezExcelImporter:
                         }
                     )
                     logger.warning(
-                        f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {str(e)}"
+                        f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {e!s}"
                     )
             else:
                 verification_results["missing_objects"] += 1
@@ -940,7 +941,7 @@ class NeosintezExcelImporter:
                         verified_objects.append(obj)
                     except Exception as e:
                         logger.error(
-                            f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {str(e)}"
+                            f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {e!s}"
                         )
 
             logger.info(
@@ -998,7 +999,7 @@ class NeosintezExcelImporter:
                         verified_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {str(e)}"
+                            f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {e!s}"
                         )
 
             logger.info(
@@ -1140,7 +1141,7 @@ async def main():
                     f"Родительский объект: {parent_object.Name} (ID: {parent_object.Id})"
                 )
             except Exception as e:
-                logger.error(f"Ошибка при получении родительского объекта: {str(e)}")
+                logger.error(f"Ошибка при получении родительского объекта: {e!s}")
                 return
 
             # Создаем импортер и запускаем импорт
@@ -1201,7 +1202,7 @@ async def main():
                             print("-" * 80)
 
     except Exception as e:
-        logger.error(f"Ошибка при выполнении импорта: {str(e)}")
+        logger.error(f"Ошибка при выполнении импорта: {e!s}")
         traceback.print_exc(file=sys.stderr)
 
 

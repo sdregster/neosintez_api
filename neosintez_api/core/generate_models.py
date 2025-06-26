@@ -9,7 +9,8 @@
 import json
 import os
 import re
-from typing import Any, Dict, List, Set, Tuple, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 
 # Путь к директории проекта
 PROJECT_DIR = os.path.dirname(
@@ -82,7 +83,7 @@ def read_swagger(swagger_path: str) -> Dict[str, Any]:
         Dict[str, Any]: Словарь с данными спецификации
     """
     try:
-        with open(swagger_path, "r", encoding="utf-8") as f:
+        with open(swagger_path, encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         raise ValueError(f"Ошибка при чтении файла Swagger: {e}")

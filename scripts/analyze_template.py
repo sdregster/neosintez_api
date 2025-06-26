@@ -10,12 +10,12 @@ import sys
 from typing import Any, Dict, List
 
 import pandas as pd
-
 from dotenv import load_dotenv
 
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
+
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -67,7 +67,7 @@ class TemplateAnalyzer:
             )
             return self.df
         except Exception as e:
-            logger.error(f"Ошибка при загрузке Excel файла: {str(e)}")
+            logger.error(f"Ошибка при загрузке Excel файла: {e!s}")
             raise
 
     async def load_neosintez_classes(self) -> Dict[str, Any]:
@@ -84,7 +84,7 @@ class TemplateAnalyzer:
             logger.info(f"Получено {len(entities)} классов")
             return self.classes
         except Exception as e:
-            logger.error(f"Ошибка при получении классов: {str(e)}")
+            logger.error(f"Ошибка при получении классов: {e!s}")
             raise
 
     async def load_class_attributes(self, class_id: str) -> List[Any]:
@@ -107,7 +107,7 @@ class TemplateAnalyzer:
             self.class_attributes[class_id] = attributes
             return attributes
         except Exception as e:
-            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {str(e)}")
+            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {e!s}")
             return []
 
     async def analyze_unique_classes(self) -> Dict[str, Any]:
@@ -271,7 +271,7 @@ class TemplateAnalyzer:
                         logger.info(
                             f"Найдены данные класса {class_data['Name']} в общем списке"
                         )
-                        if "Attributes" in class_data and class_data["Attributes"]:
+                        if class_data.get("Attributes"):
                             logger.info(
                                 f"Структура атрибутов класса: {json.dumps(dict(list(class_data['Attributes'].items())[:2]), ensure_ascii=False)}"
                             )
@@ -516,17 +516,17 @@ async def main():
                     )
 
             except NeosintezAuthError as e:
-                logger.error(f"Ошибка аутентификации: {str(e)}")
+                logger.error(f"Ошибка аутентификации: {e!s}")
             except NeosintezConnectionError as e:
-                logger.error(f"Ошибка соединения: {str(e)}")
+                logger.error(f"Ошибка соединения: {e!s}")
             except Exception as e:
-                logger.error(f"Неожиданная ошибка: {str(e)}")
-                logger.error(f"Детали: {type(e).__name__}: {str(e)}")
+                logger.error(f"Неожиданная ошибка: {e!s}")
+                logger.error(f"Детали: {type(e).__name__}: {e!s}")
                 import traceback
 
                 logger.error(traceback.format_exc())
     except Exception as e:
-        logger.error(f"Ошибка при инициализации: {str(e)}")
+        logger.error(f"Ошибка при инициализации: {e!s}")
         import traceback
 
         logger.error(traceback.format_exc())
@@ -538,5 +538,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Прервано пользователем")
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")
         sys.exit(1)

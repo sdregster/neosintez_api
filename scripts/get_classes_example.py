@@ -15,6 +15,7 @@ from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
 from neosintez_api.models import EntityClass
 
+
 load_dotenv()
 
 # Настройка логирования
@@ -98,11 +99,11 @@ async def get_classes() -> List[EntityClass]:
             return entities
 
         except NeosintezAuthError as e:
-            logger.error(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка аутентификации: {e!s}")
         except NeosintezConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
 
     return []
 

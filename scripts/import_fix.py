@@ -20,6 +20,7 @@ from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
 from neosintez_api.models import EntityClass
 
+
 load_dotenv()
 
 # Настройка логирования
@@ -83,7 +84,7 @@ class FixedExcelImporter:
 
             return self.df
         except Exception as e:
-            logger.error(f"Ошибка при загрузке Excel файла: {str(e)}")
+            logger.error(f"Ошибка при загрузке Excel файла: {e!s}")
             raise
 
     async def load_neosintez_classes(self) -> Dict[str, EntityClass]:
@@ -100,7 +101,7 @@ class FixedExcelImporter:
             logger.info(f"Получено {len(entities)} классов")
             return self.classes
         except Exception as e:
-            logger.error(f"Ошибка при получении классов: {str(e)}")
+            logger.error(f"Ошибка при получении классов: {e!s}")
             raise
 
     async def load_class_attributes(self, class_id: str) -> List[Any]:
@@ -123,7 +124,7 @@ class FixedExcelImporter:
             self.class_attributes[class_id] = attributes
             return attributes
         except Exception as e:
-            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {str(e)}")
+            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {e!s}")
             return []
 
     async def build_object_hierarchy(self) -> List[Dict[str, Any]]:
@@ -325,12 +326,12 @@ class FixedExcelImporter:
 
                 except Exception as e:
                     logger.error(
-                        f"Ошибка при создании объекта '{obj['name']}': {str(e)}"
+                        f"Ошибка при создании объекта '{obj['name']}': {e!s}"
                     )
 
             except Exception as e:
                 logger.error(
-                    f"Общая ошибка при обработке объекта '{obj['name']}': {str(e)}"
+                    f"Общая ошибка при обработке объекта '{obj['name']}': {e!s}"
                 )
 
         return result
@@ -397,7 +398,7 @@ class FixedExcelImporter:
 
         except Exception as e:
             logger.error(
-                f"Ошибка при установке атрибутов объекта {object_id}: {str(e)}"
+                f"Ошибка при установке атрибутов объекта {object_id}: {e!s}"
             )
             return False
 
@@ -453,7 +454,7 @@ class FixedExcelImporter:
                         }
                     )
                     logger.warning(
-                        f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {str(e)}"
+                        f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {e!s}"
                     )
             else:
                 verification_results["missing_objects"] += 1
@@ -657,9 +658,9 @@ async def main():
                     logger.info(f"  {class_name}: {count} объектов")
 
             except NeosintezAuthError as e:
-                logger.error(f"Ошибка аутентификации: {str(e)}")
+                logger.error(f"Ошибка аутентификации: {e!s}")
             except NeosintezConnectionError as e:
-                logger.error(f"Ошибка соединения: {str(e)}")
+                logger.error(f"Ошибка соединения: {e!s}")
             except Exception:
                 logger.error(f"Неожиданная ошибка: {traceback.format_exc()}")
     except Exception:

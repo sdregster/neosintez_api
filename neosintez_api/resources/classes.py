@@ -3,12 +3,12 @@
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union
-from uuid import UUID
+from typing import Any, Dict, List, Optional
 
-from ..models import Attribute, EntityClass
 from ..exceptions import ApiError
+from ..models import Attribute, EntityClass
 from .base import BaseResource
+
 
 # Настройка логгера
 logger = logging.getLogger("neosintez_api.resources.classes")
@@ -83,7 +83,7 @@ class ClassesResource(BaseResource):
             return matches
 
         except Exception as e:
-            logger.error(f"Ошибка при поиске классов по имени '{name}': {str(e)}")
+            logger.error(f"Ошибка при поиске классов по имени '{name}': {e!s}")
             return []
 
     async def get_by_id(self, entity_id: str) -> Optional[EntityClass]:
@@ -144,7 +144,7 @@ class ClassesResource(BaseResource):
                 if str(class_data.get("Id")) == class_id:
                     # Извлекаем атрибуты из класса
                     attributes = []
-                    if "Attributes" in class_data and class_data["Attributes"]:
+                    if class_data.get("Attributes"):
                         for attr_id, attr_data in class_data["Attributes"].items():
                             try:
                                 # Создаем базовую структуру атрибута
@@ -168,7 +168,7 @@ class ClassesResource(BaseResource):
                                 attributes.append(Attribute.model_validate(attr_dict))
                             except Exception as e:
                                 logger.error(
-                                    f"Ошибка при обработке атрибута {attr_id}: {str(e)}"
+                                    f"Ошибка при обработке атрибута {attr_id}: {e!s}"
                                 )
                                 # Добавляем минимальную информацию об атрибуте
                                 attributes.append(
@@ -181,7 +181,7 @@ class ClassesResource(BaseResource):
             return await self._get_attributes_from_common_endpoint(class_id)
 
         except Exception as e:
-            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {str(e)}")
+            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {e!s}")
             # Пробуем получить атрибуты через общий эндпоинт как запасной вариант
             return await self._get_attributes_from_common_endpoint(class_id)
 
@@ -213,33 +213,33 @@ class ClassesResource(BaseResource):
                             class_attributes.append(Attribute.model_validate(attr))
                     except Exception as e:
                         logger.error(
-                            f"Ошибка при обработке атрибута через общий эндпоинт: {str(e)}"
+                            f"Ошибка при обработке атрибута через общий эндпоинт: {e!s}"
                         )
 
                 return class_attributes
             return []
         except Exception as e:
             logger.error(
-                f"Ошибка при получении атрибутов через общий эндпоинт для класса {class_id}: {str(e)}"
+                f"Ошибка при получении атрибутов через общий эндпоинт для класса {class_id}: {e!s}"
             )
             return []
 
     async def find_by_name(self, class_name: str) -> str:
         """
         Находит класс по имени.
-        
+
         Args:
             class_name: Имя класса для поиска
-            
+
         Returns:
             str: ID найденного класса
-            
+
         Raises:
             ApiError: Если класс не найден
         """
         classes = await self.get_classes_by_name(class_name)
         if not classes:
             raise ApiError(404, f"Класс '{class_name}' не найден", None)
-            
+
         # Возвращаем ID первого найденного класса
         return classes[0]["id"]

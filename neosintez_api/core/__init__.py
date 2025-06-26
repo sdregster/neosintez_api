@@ -5,20 +5,21 @@
 
 from .client import NeosintezClient
 from .exceptions import (
-    NeosintezError,
-    NeosintezAuthError,
     NeosintezAPIError,
+    NeosintezAuthError,
     NeosintezConnectionError,
+    NeosintezError,
     NeosintezTimeoutError,
     NeosintezValidationError,
 )
 
+
 __all__ = [
-    "NeosintezClient",
-    "NeosintezError",
-    "NeosintezAuthError",
     "NeosintezAPIError",
+    "NeosintezAuthError",
+    "NeosintezClient",
     "NeosintezConnectionError",
+    "NeosintezError",
     "NeosintezTimeoutError",
     "NeosintezValidationError",
 ]

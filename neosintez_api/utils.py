@@ -5,6 +5,8 @@
 import asyncio
 import json
 import logging
+from datetime import date, datetime, time
+from decimal import Decimal
 from functools import wraps
 from typing import (
     Any,
@@ -13,13 +15,10 @@ from typing import (
     List,
     Optional,
     TypeVar,
-    get_origin,
     get_args,
+    get_origin,
 )
-from datetime import date, time, datetime
-from decimal import Decimal
 from uuid import UUID
-from enum import IntEnum
 
 import aiohttp
 
@@ -29,6 +28,7 @@ from .exceptions import (
     NeosintezTimeoutError,
     NeosintezValidationError,
 )
+
 
 # Настройка логирования
 logger = logging.getLogger("neosintez_api")
@@ -40,6 +40,7 @@ class CustomJSONEncoder(json.JSONEncoder):
     """
     Кастомный JSON-энкодер для сериализации UUID и datetime.
     """
+
     def default(self, obj):
         if isinstance(obj, UUID):
             return str(obj)
@@ -82,16 +83,16 @@ async def retry_async(
             if attempt < attempts:
                 logger.warning(
                     f"Попытка {attempt} из {attempts} не удалась. "
-                    f"Ошибка: {str(e)}. Повтор через {delay} сек..."
+                    f"Ошибка: {e!s}. Повтор через {delay} сек..."
                 )
                 await asyncio.sleep(delay)
             else:
                 logger.error(
-                    f"Все {attempts} попыток не удались. Последняя ошибка: {str(e)}"
+                    f"Все {attempts} попыток не удались. Последняя ошибка: {e!s}"
                 )
                 raise
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
             raise
 
     # Этот код не должен выполняться, но добавлен для типизации
@@ -195,10 +196,10 @@ async def parse_error_response(response: aiohttp.ClientResponse) -> Dict[str, An
 
         return {"status_code": status_code, "message": message, "data": response_data}
     except Exception as e:
-        logger.error(f"Ошибка при парсинге ответа с ошибкой: {str(e)}")
+        logger.error(f"Ошибка при парсинге ответа с ошибкой: {e!s}")
         return {
             "status_code": status_code,
-            "message": f"Ошибка при парсинге ответа: {str(e)}",
+            "message": f"Ошибка при парсинге ответа: {e!s}",
             "data": None,
         }
 
@@ -356,30 +357,34 @@ def convert_value_to_wio_format(value: Any, wio_type: WioAttributeType) -> Any:
 
     except (ValueError, TypeError) as e:
         raise NeosintezValidationError(
-            f"Не удалось преобразовать значение '{value}' в тип '{wio_type.as_string}': {str(e)}"
+            f"Не удалось преобразовать значение '{value}' в тип '{wio_type.as_string}': {e!s}"
         )
 
 
 def format_attribute_value(attr_meta: Dict[str, Any], value: Any) -> Any:
     """
     Форматирует значение атрибута в соответствии с его типом.
-    
+
     Args:
         attr_meta: Метаданные атрибута
         value: Значение атрибута
-        
+
     Returns:
         Any: Отформатированное значение
     """
     if value is None:
         return None
-        
+
     # Получаем тип атрибута
-    attr_type = attr_meta.get("Type") if isinstance(attr_meta, dict) else getattr(attr_meta, "Type", None)
-    
+    attr_type = (
+        attr_meta.get("Type")
+        if isinstance(attr_meta, dict)
+        else getattr(attr_meta, "Type", None)
+    )
+
     if attr_type is None:
         return value  # Если не удалось определить тип, возвращаем как есть
-    
+
     try:
         # Преобразуем значение в зависимости от типа атрибута
         if attr_type == WioAttributeType.NUMBER:
@@ -417,7 +422,7 @@ def format_attribute_value(attr_meta: Dict[str, Any], value: Any) -> Any:
         else:
             # Другие типы
             return value
-    except (ValueError, TypeError) as e:
+    except (ValueError, TypeError):
         # В случае ошибки преобразования возвращаем исходное значение
         return value
 
@@ -427,26 +432,32 @@ def build_attribute_body(
 ) -> Dict[str, Any]:
     """
     Создает тело атрибута для API.
-    
+
     Args:
         attr_meta: Метаданные атрибута
         value: Значение атрибута
         attr_type: Явно указанный тип атрибута (если известен)
-        
+
     Returns:
         Dict[str, Any]: Тело атрибута для API запроса (только Id, Value, Type)
     """
     # Получаем ID атрибута
     attr_id = attr_meta["Id"] if isinstance(attr_meta, dict) else attr_meta.Id
     attr_id = str(attr_id)
-    
+
     # Получаем тип атрибута из метаданных (это приоритет)
-    api_attr_type = attr_meta.get("Type") if isinstance(attr_meta, dict) else getattr(attr_meta, "Type", None)
-    
+    api_attr_type = (
+        attr_meta.get("Type")
+        if isinstance(attr_meta, dict)
+        else getattr(attr_meta, "Type", None)
+    )
+
     # Если тип не указан в метаданных, определяем его по значению
     if api_attr_type is None:
         if attr_type:
-            api_attr_type = attr_type.value if hasattr(attr_type, 'value') else attr_type
+            api_attr_type = (
+                attr_type.value if hasattr(attr_type, "value") else attr_type
+            )
         else:
             # Простая логика определения типа по значению
             if isinstance(value, int):
@@ -459,7 +470,7 @@ def build_attribute_body(
                 api_attr_type = 4  # BOOLEAN в API
             else:
                 api_attr_type = 2  # По умолчанию STRING
-    
+
     # Простое форматирование значения
     if value is None:
         formatted_value = None
@@ -467,13 +478,9 @@ def build_attribute_body(
         formatted_value = value  # Оставляем как есть для простых типов
     else:
         formatted_value = str(value)  # Преобразуем в строку для сложных типов
-    
+
     # Возвращаем только необходимые поля (как в simple_create_object.py)
-    return {
-        "Id": attr_id,
-        "Value": formatted_value,
-        "Type": api_attr_type
-    }
+    return {"Id": attr_id, "Value": formatted_value, "Type": api_attr_type}
 
 
 def get_field_external_name(model_class: type, field_name: str) -> str:

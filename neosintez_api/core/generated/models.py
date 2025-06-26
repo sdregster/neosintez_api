@@ -6,8 +6,8 @@
 """
 
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field, field_validator
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field
 import datetime
 import uuid
 
@@ -34,12 +34,18 @@ class ConstraintType(BaseModel):
 
 
 class Constraint(BaseModel):
-    """Ограничение значения атрибута
-<br>Если Type = Entity, то EntityId обязателен, ObjectRootId должен быть `null`<br>Если Type = ObjectRoot, то ObjectRootId обязателен, EntityId должен быть `null`"""
+    """Ограничение значения атрибута
+
+    <br>Если Type = Entity, то EntityId обязателен, ObjectRootId должен быть `null`<br>Если Type = ObjectRoot, то ObjectRootId обязателен, EntityId должен быть `null`"""
 
     Type: ConstraintType
-    EntityId: Optional[uuid.UUID] = Field(default=None, description="Значение ограничения по классу")
-    ObjectRootId: Optional[uuid.UUID] = Field(default=None, description="Значение ограничения по корню поддерева возможных значений")
+    EntityId: Optional[uuid.UUID] = Field(
+        default=None, description="Значение ограничения по классу"
+    )
+    ObjectRootId: Optional[uuid.UUID] = Field(
+        default=None,
+        description="Значение ограничения по корню поддерева возможных значений",
+    )
 
 
 class Unit(BaseModel):
@@ -72,11 +78,17 @@ class ElementAttribute(BaseModel):
     """Модель ElementAttribute"""
 
     Type: ElementAttributeType
-    Name: Optional[str] = Field(default=None, description="Получает и задаёт название свойства.
-<remarks>Используется в случае когда `ElementAttributeType == ElementAttributeType.Property`</remarks>")
-    Description: Optional[str] = Field(default=None, description="Получает и задаёт описание свойства.
-<remarks>Используется в случае когда `ElementAttributeType == ElementAttributeType.Property`</remarks>")
-    DisplayName: Optional[str] = Field(default=None, description="Калькулируемое свойство для отображения и сортировки")
+    Name: Optional[str] = Field(
+        default=None,
+        description="Получает и задаёт название свойства. Используется в случае когда ElementAttributeType == ElementAttributeType.Property",
+    )
+    Description: Optional[str] = Field(
+        default=None,
+        description="Получает и задаёт описание свойства. Используется в случае когда ElementAttributeType == ElementAttributeType.Property",
+    )
+    DisplayName: Optional[str] = Field(
+        default=None, description="Калькулируемое свойство для отображения и сортировки"
+    )
 
 
 class AutoLinkingMappingCondition(BaseModel):
@@ -100,7 +112,9 @@ class BaseItem(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
 
 
 class BaseItemNg_Of_Guid(BaseModel):
@@ -108,7 +122,9 @@ class BaseItemNg_Of_Guid(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=450, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=450, description="Описание объекта"
+    )
 
 
 class BaseItemNg_Of_Int32(BaseModel):
@@ -116,7 +132,9 @@ class BaseItemNg_Of_Int32(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=450, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=450, description="Описание объекта"
+    )
 
 
 class BaseItem_Of_Int32(BaseModel):
@@ -124,7 +142,9 @@ class BaseItem_Of_Int32(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
 
 
 class BaseItem_Of_Int64(BaseModel):
@@ -132,7 +152,9 @@ class BaseItem_Of_Int64(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
 
 
 class BrandingOptions(BaseModel):
@@ -151,15 +173,22 @@ class Cardinality(BaseModel):
 class ClientCredentials(BaseModel):
     """Модель ClientCredentials"""
 
-    Secret: Optional[str] = Field(default=None, description="Если секрет не указан, клиент считается публичным, и для него возможен только Implicit Flow")
+    Secret: Optional[str] = Field(
+        default=None,
+        description="Если секрет не указан, клиент считается публичным, и для него возможен только Implicit Flow",
+    )
     RedirectUris: Optional[List[str]] = Field(default=None)
 
 
 class ClientsOptions(BaseModel):
     """Модель ClientsOptions"""
 
-    Credentials: Optional[Dict[str, Any]] = Field(default=None, description="clientId/secret dictionary")
-    TokenLifetime: int = Field(description="Время жизни токена с момента его получения, в секундах")
+    Credentials: Optional[Dict[str, Any]] = Field(
+        default=None, description="clientId/secret dictionary"
+    )
+    TokenLifetime: int = Field(
+        description="Время жизни токена с момента его получения, в секундах"
+    )
 
 
 class LockType(BaseModel):
@@ -194,14 +223,20 @@ class WioEntityAttribute(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Locked: Optional[LockType] = Field(default=None)
     Type: WioAttributeType
-    Constraints: Optional[List[Constraint]] = Field(default=None, description="Список ограничений")
+    Constraints: Optional[List[Constraint]] = Field(
+        default=None, description="Список ограничений"
+    )
     Unit: Optional[BaseItem_Of_Int64] = Field(default=None)
     Group: Optional[BaseItem_Of_Int64] = Field(default=None)
     Inherited: Optional[bool] = Field(default=None)
-    Rules: Optional[Dict[str, Any]] = Field(default=None, description="Правила валидации для атрибута")
+    Rules: Optional[Dict[str, Any]] = Field(
+        default=None, description="Правила валидации для атрибута"
+    )
 
 
 class ViewerInstance_Of_Object(BaseModel):
@@ -220,13 +255,21 @@ class WioEntity(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Locked: Optional[LockType] = Field(default=None)
     Parent: Optional[WioEntity] = Field(default=None)
-    Level: Optional[int] = Field(default=None, description="Уровень узла в дереве классов")
+    Level: Optional[int] = Field(
+        default=None, description="Уровень узла в дереве классов"
+    )
     Icon: Optional[str] = Field(default=None, description="Иконка сущности")
-    Attributes: Optional[Dict[str, Any]] = Field(default=None, description="Список атрибутов класса")
-    Viewers: Optional[List[ViewerInstance_Of_Object]] = Field(default=None, description="Список просмотрщиков")
+    Attributes: Optional[Dict[str, Any]] = Field(
+        default=None, description="Список атрибутов класса"
+    )
+    Viewers: Optional[List[ViewerInstance_Of_Object]] = Field(
+        default=None, description="Список просмотрщиков"
+    )
 
 
 class WioObjectAttribute(BaseModel):
@@ -234,10 +277,14 @@ class WioObjectAttribute(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Locked: Optional[LockType] = Field(default=None)
     Type: WioAttributeType
-    Constraints: Optional[List[Constraint]] = Field(default=None, description="Список ограничений")
+    Constraints: Optional[List[Constraint]] = Field(
+        default=None, description="Список ограничений"
+    )
     Unit: Optional[BaseItem_Of_Int64] = Field(default=None)
     Group: Optional[BaseItem_Of_Int64] = Field(default=None)
     Value: Optional[Any] = Field(default=None, description="Значение атрибута")
@@ -255,7 +302,9 @@ class ElementLinkItem(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     ContentType: Optional[ModelContentType] = Field(default=None)
     Ids: Optional[List[int]] = Field(default=None)
 
@@ -271,16 +320,30 @@ class WioObject(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Entity: Optional[WioEntity] = Field(default=None)
-    Attributes: Optional[Dict[str, Any]] = Field(default=None, description="Список атрибутов с их значениями")
-    ModelLinks: Optional[List[ElementLinkItem]] = Field(default=None, description="Список ссылок на 3D моделях")
-    CreationDate: Optional[datetime.datetime] = Field(default=None, description="Дата и время создания объекта")
-    ModificationDate: Optional[datetime.datetime] = Field(default=None, description="Дата и время модификации объекта")
+    Attributes: Optional[Dict[str, Any]] = Field(
+        default=None, description="Список атрибутов с их значениями"
+    )
+    ModelLinks: Optional[List[ElementLinkItem]] = Field(
+        default=None, description="Список ссылок на 3D моделях"
+    )
+    CreationDate: Optional[datetime.datetime] = Field(
+        default=None, description="Дата и время создания объекта"
+    )
+    ModificationDate: Optional[datetime.datetime] = Field(
+        default=None, description="Дата и время модификации объекта"
+    )
     Owner: Optional[BaseItem_Of_Int32] = Field(default=None)
     EffectivePermissions: Optional[ObjectPermission] = Field(default=None)
-    IsTemplate: Optional[bool] = Field(default=None, description="Является ли объект шаблоном")
-    HostObjectId: Optional[uuid.UUID] = Field(default=None, description="Идентификатор родительского объекта (для коллекций)")
+    IsTemplate: Optional[bool] = Field(
+        default=None, description="Является ли объект шаблоном"
+    )
+    HostObjectId: Optional[uuid.UUID] = Field(
+        default=None, description="Идентификатор родительского объекта (для коллекций)"
+    )
     Icon: Optional[str] = Field(default=None)
     Version: int
     VersionTimestamp: datetime.datetime
@@ -292,7 +355,9 @@ class CollectionItem(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Object: Optional[WioObject] = Field(default=None)
 
 
@@ -314,20 +379,27 @@ class ContentValue(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     MediaType: Optional[str] = Field(default=None, description="Тип содержимого")
     Extension: Optional[str] = Field(default=None, description="Расширение файла")
     Hash: Optional[str] = Field(default=None, description="Хэш соджержимого")
     Version: Optional[int] = Field(default=None, description="Версия содержимого")
     Size: Optional[int] = Field(default=None, description="Размер содержимого")
-    TempToken: Optional[uuid.UUID] = Field(default=None, description="Токен используется для загрузки контента через временные файлы")
+    TempToken: Optional[uuid.UUID] = Field(
+        default=None,
+        description="Токен используется для загрузки контента через временные файлы",
+    )
 
 
 class Culture(BaseModel):
     """Represents culture model."""
 
     Name: Optional[str] = Field(default=None, description="Get culture name.")
-    NativeName: Optional[str] = Field(default=None, description="Get culture native name.")
+    NativeName: Optional[str] = Field(
+        default=None, description="Get culture native name."
+    )
 
 
 class DomainSortingOptions(BaseModel):
@@ -349,7 +421,9 @@ class ElementLinksContainer(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=450, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=450, description="Описание объекта"
+    )
     Links: Optional[List[BaseItemNg_Of_Guid]] = Field(default=None)
 
 
@@ -357,25 +431,39 @@ class ElementNode(BaseModel):
     """Представляет элемент дерева элементов p3db."""
 
     Id: int = Field(description="Получает и задаёт идентификатор элемента.")
-    Name: Optional[str] = Field(default=None, description="Получает и задаёт название элемента.")
+    Name: Optional[str] = Field(
+        default=None, description="Получает и задаёт название элемента."
+    )
     HasChildren: bool = Field(description="Получает и задаёт признак наличия потомков.")
-    Mapped: bool = Field(description="Получает и задаёт признак наличия маппинга классов.")
+    Mapped: bool = Field(
+        description="Получает и задаёт признак наличия маппинга классов."
+    )
     Children: Optional[List[ElementNode]] = Field(default=None)
 
 
 class FileStorageOptions(BaseModel):
     """Модель FileStorageOptions"""
 
-    PanoPath: Optional[str] = Field(default=None, description="Папка для кеширования файлов распакованного пакета панорам.")
-    TempPath: Optional[str] = Field(default=None, description="Папка для временных файлов.")
-    UploadPath: Optional[str] = Field(default=None, description="Папка для хранения файлов, которые пользователь загружает из браузера.")
+    PanoPath: Optional[str] = Field(
+        default=None,
+        description="Папка для кеширования файлов распакованного пакета панорам.",
+    )
+    TempPath: Optional[str] = Field(
+        default=None, description="Папка для временных файлов."
+    )
+    UploadPath: Optional[str] = Field(
+        default=None,
+        description="Папка для хранения файлов, которые пользователь загружает из браузера.",
+    )
 
 
 class Globalization(BaseModel):
     """Represents globalization model."""
 
     DefaultCulture: Optional[Culture] = Field(default=None)
-    SupportedCultures: Optional[List[Culture]] = Field(default=None, description="Get supported cultures.")
+    SupportedCultures: Optional[List[Culture]] = Field(
+        default=None, description="Get supported cultures."
+    )
 
 
 class IGuidNode(BaseModel):
@@ -411,7 +499,9 @@ class ModelFileNg(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=450, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=450, description="Описание объекта"
+    )
     Inherited: bool
     ModelId: int
     Timestamp: datetime.datetime
@@ -438,7 +528,9 @@ class NodeDto(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Children: Optional[List[IGuidNode]] = Field(default=None)
     HasChildren: Optional[bool] = Field(default=None)
     Level: Optional[int] = Field(default=None)
@@ -452,7 +544,9 @@ class NodeNg(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=450, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=450, description="Описание объекта"
+    )
     Children: Optional[List[NodeNg]] = Field(default=None)
     HasChildren: Optional[bool] = Field(default=None)
     Level: Optional[int] = Field(default=None)
@@ -471,7 +565,9 @@ class ObjectPermissionInfo(BaseModel):
 
     Id: ObjectPermission
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     State: ObjectPermissionState
     InheritedState: Optional[ObjectPermissionState] = Field(default=None)
     IsInherited: bool = Field(description="Унаследовано ли это полномочме")
@@ -488,7 +584,9 @@ class Principal(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Type: PrincipalType
 
 
@@ -496,15 +594,21 @@ class PrincipalPermissionInfo_Of_ObjectPermissionInfo(BaseModel):
     """Информация о полномочиях объекта"""
 
     Principal: Optional[Principal] = Field(default=None)
-    Permissions: Optional[List[ObjectPermissionInfo]] = Field(default=None, description="Установленные полномочия")
+    Permissions: Optional[List[ObjectPermissionInfo]] = Field(
+        default=None, description="Установленные полномочия"
+    )
     IsInherited: bool = Field(description="Является ли данный principal унаследованным")
 
 
 class ObjectSecurityInfo(BaseModel):
     """Модель ObjectSecurityInfo"""
 
-    PrincipalObjectPermissions: Optional[List[PrincipalPermissionInfo_Of_ObjectPermissionInfo]] = Field(default=None)
-    EffectivePermissions: Optional[List[PrincipalPermissionInfo_Of_ObjectPermissionInfo]] = Field(default=None)
+    PrincipalObjectPermissions: Optional[
+        List[PrincipalPermissionInfo_Of_ObjectPermissionInfo]
+    ] = Field(default=None)
+    EffectivePermissions: Optional[
+        List[PrincipalPermissionInfo_Of_ObjectPermissionInfo]
+    ] = Field(default=None)
     DefaultPermissions: Optional[List[ObjectPermissionInfo]] = Field(default=None)
 
 
@@ -525,7 +629,9 @@ class PermissionManagementOperation(BaseModel):
     """Модель PermissionManagementOperation"""
 
     Operation: PermissionOperation
-    PrincipalPermissionInfo: Optional[PrincipalPermissionInfo_Of_ObjectPermissionInfo] = Field(default=None)
+    PrincipalPermissionInfo: Optional[
+        PrincipalPermissionInfo_Of_ObjectPermissionInfo
+    ] = Field(default=None)
 
 
 class PreviewOptions(BaseModel):
@@ -672,10 +778,14 @@ class WioAttribute(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Locked: Optional[LockType] = Field(default=None)
     Type: WioAttributeType
-    Constraints: Optional[List[Constraint]] = Field(default=None, description="Список ограничений")
+    Constraints: Optional[List[Constraint]] = Field(
+        default=None, description="Список ограничений"
+    )
     Unit: Optional[BaseItem_Of_Int64] = Field(default=None)
     Group: Optional[BaseItem_Of_Int64] = Field(default=None)
 
@@ -702,9 +812,13 @@ class UpdateCultureCommand(BaseModel):
 class UserChangePasswordCommand(BaseModel):
     """Represents user change password command."""
 
-    CurrentPassword: Optional[str] = Field(default=None, description="Current password.")
+    CurrentPassword: Optional[str] = Field(
+        default=None, description="Current password."
+    )
     Password: Optional[str] = Field(default=None, description="New password.")
-    ConfirmPassword: Optional[str] = Field(default=None, description="New password confirm.")
+    ConfirmPassword: Optional[str] = Field(
+        default=None, description="New password confirm."
+    )
 
 
 class WioAttributeTypeInfo(BaseModel):
@@ -712,9 +826,13 @@ class WioAttributeTypeInfo(BaseModel):
 
     Type: WioAttributeType
     Caption: Optional[str] = Field(default=None, description="Название типа атрибута")
-    SupportsUnits: Optional[bool] = Field(default=None, description="Поддерживает ли атрибут единицы измерения")
+    SupportsUnits: Optional[bool] = Field(
+        default=None, description="Поддерживает ли атрибут единицы измерения"
+    )
     IsScalar: Optional[bool] = Field(default=None)
-    Constraints: Optional[Dict[str, Any]] = Field(default=None, description="Настройки кардинальности ограничений")
+    Constraints: Optional[Dict[str, Any]] = Field(
+        default=None, description="Настройки кардинальности ограничений"
+    )
 
 
 class WioUserCredentials(BaseModel):
@@ -731,7 +849,9 @@ class WioFullUser(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     LockoutDate: Optional[datetime.datetime] = Field(default=None)
     LastActivity: Optional[datetime.datetime] = Field(default=None)
     IsExternal: bool
@@ -744,7 +864,9 @@ class WioObjectNode(BaseModel):
 
     Id: uuid.UUID = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Children: Optional[List[WioObjectNode]] = Field(default=None)
     EffectivePermissions: Optional[ObjectPermission] = Field(default=None)
     HasChildren: Optional[bool] = Field(default=None)
@@ -767,7 +889,9 @@ class WioRole(BaseModel):
     """Роль в Inter Operation for Web"""
 
     Id: int = Field(description="Идентификатор объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     Name: str = Field(min_length=3, max_length=100, pattern=r"^[а-яА-Я\\w\\-\\.]+$")
 
 
@@ -776,7 +900,9 @@ class WioUser(BaseModel):
 
     Id: int = Field(description="Идентификатор объекта")
     Name: str = Field(min_length=1, max_length=450, description="Название объекта")
-    Description: Optional[str] = Field(default=None, max_length=500, description="Описание объекта")
+    Description: Optional[str] = Field(
+        default=None, max_length=500, description="Описание объекта"
+    )
     LockoutDate: Optional[datetime.datetime] = Field(default=None)
     LastActivity: Optional[datetime.datetime] = Field(default=None)
     IsExternal: bool

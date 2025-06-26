@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 from uuid import UUID
 
 # Загрузка переменных окружения из .env файла
@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
+
 
 load_dotenv()
 
@@ -88,11 +89,11 @@ async def get_all_classes() -> Dict[str, Any]:
             return result
 
         except NeosintezAuthError as e:
-            logger.error(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка аутентификации: {e!s}")
         except NeosintezConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
 
     return result
 
@@ -147,7 +148,7 @@ async def get_class_attributes(
         return attributes_list
 
     except Exception as e:
-        logger.error(f"Ошибка при получении атрибутов класса {class_id}: {str(e)}")
+        logger.error(f"Ошибка при получении атрибутов класса {class_id}: {e!s}")
         return []
 
 
@@ -290,7 +291,7 @@ async def get_classes_with_attributes(save_to_file: bool = True) -> Dict[str, An
         return result
 
     except Exception as e:
-        logger.error(f"Ошибка при получении классов с атрибутами: {str(e)}")
+        logger.error(f"Ошибка при получении классов с атрибутами: {e!s}")
         import traceback
 
         logger.error(f"Трассировка: {traceback.format_exc()}")
@@ -341,4 +342,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Прервано пользователем")
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")

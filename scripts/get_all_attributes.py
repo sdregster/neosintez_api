@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 from uuid import UUID
 
 # Загрузка переменных окружения из .env файла
@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
+
 
 load_dotenv()
 
@@ -121,11 +122,11 @@ async def get_all_attributes(save_to_file: bool = True) -> Dict[str, Any]:
             return result
 
         except NeosintezAuthError as e:
-            logger.error(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка аутентификации: {e!s}")
         except NeosintezConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
 
     return result
 
@@ -251,4 +252,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Прервано пользователем")
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")

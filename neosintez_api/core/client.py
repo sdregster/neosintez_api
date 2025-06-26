@@ -5,19 +5,20 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import aiohttp
 from pydantic import BaseModel
 
+from ..config import NeosintezSettings
+from ..utils import CustomJSONEncoder, parse_error_response, retry
 from .exceptions import (
     NeosintezAPIError,
     NeosintezAuthError,
     NeosintezConnectionError,
     NeosintezTimeoutError,
 )
-from ..config import NeosintezSettings
-from ..utils import parse_error_response, retry, CustomJSONEncoder
+
 
 # Настройка логгера
 logger = logging.getLogger("neosintez_api")
@@ -153,10 +154,10 @@ class NeosintezClient:
                         logger.debug("Аутентификация успешна")
                         return self.token
                     except (json.JSONDecodeError, KeyError) as e:
-                        logger.error(f"Ошибка при парсинге ответа: {str(e)}")
+                        logger.error(f"Ошибка при парсинге ответа: {e!s}")
                         logger.error(f"Текст ответа: {response_text[:200]}...")
                         raise NeosintezAuthError(
-                            f"Ошибка при парсинге ответа: {str(e)}"
+                            f"Ошибка при парсинге ответа: {e!s}"
                         )
                 else:
                     response_text = await response.text()
@@ -167,16 +168,16 @@ class NeosintezClient:
                         f"Не удалось авторизоваться. {response.status} - {response_text}"
                     )
         except aiohttp.ClientConnectionError as e:
-            logger.error(f"Ошибка соединения при аутентификации: {str(e)}")
-            raise NeosintezConnectionError(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения при аутентификации: {e!s}")
+            raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")
         except aiohttp.ClientResponseError as e:
-            logger.error(f"Ошибка ответа при аутентификации: {str(e)}")
-            raise NeosintezAuthError(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка ответа при аутентификации: {e!s}")
+            raise NeosintezAuthError(f"Ошибка аутентификации: {e!s}")
         except aiohttp.ClientError as e:
-            logger.error(f"Ошибка клиента при аутентификации: {str(e)}")
-            raise NeosintezAuthError(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка клиента при аутентификации: {e!s}")
+            raise NeosintezAuthError(f"Ошибка аутентификации: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка при аутентификации: {str(e)}")
+            logger.error(f"Неожиданная ошибка при аутентификации: {e!s}")
             logger.error(f"Тип ошибки: {type(e)}")
             import traceback
 
@@ -243,7 +244,9 @@ class NeosintezClient:
             data = data.model_dump(exclude_none=True)
 
         # Преобразуем данные в JSON, если они не None, используя кастомный энкодер
-        json_data = json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
+        json_data = (
+            json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
+        )
 
         logger.debug(f"Запрос {method} {self.settings.base_url}{endpoint}")
         if params:
@@ -299,21 +302,21 @@ class NeosintezClient:
                 )
 
         except aiohttp.ClientConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
-            raise NeosintezConnectionError(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
+            raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")
         except aiohttp.ClientResponseError as e:
-            logger.error(f"Ошибка ответа: {str(e)}")
+            logger.error(f"Ошибка ответа: {e!s}")
             raise NeosintezAPIError(
                 status_code=e.status, message=str(e), response_data=None
             )
         except aiohttp.ClientError as e:
-            logger.error(f"Ошибка клиента: {str(e)}")
+            logger.error(f"Ошибка клиента: {e!s}")
             raise NeosintezAPIError(status_code=500, message=str(e), response_data=None)
         except asyncio.TimeoutError as e:
-            logger.error(f"Таймаут запроса: {str(e)}")
-            raise NeosintezTimeoutError(f"Таймаут запроса: {str(e)}")
+            logger.error(f"Таймаут запроса: {e!s}")
+            raise NeosintezTimeoutError(f"Таймаут запроса: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
             import traceback
 
             logger.error(f"Трассировка: {traceback.format_exc()}")
@@ -358,7 +361,9 @@ class NeosintezClient:
             data = data.model_dump(exclude_none=True)
 
         # Преобразуем данные в JSON, если они не None, используя кастомный энкодер
-        json_data = json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
+        json_data = (
+            json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
+        )
 
         try:
             async with self.session.request(
@@ -379,13 +384,13 @@ class NeosintezClient:
                 return status, content
 
         except aiohttp.ClientConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
-            raise NeosintezConnectionError(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
+            raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")
         except asyncio.TimeoutError as e:
-            logger.error(f"Таймаут запроса: {str(e)}")
-            raise NeosintezTimeoutError(f"Таймаут запроса: {str(e)}")
+            logger.error(f"Таймаут запроса: {e!s}")
+            raise NeosintezTimeoutError(f"Таймаут запроса: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
             import traceback
 
             logger.error(f"Трассировка: {traceback.format_exc()}")

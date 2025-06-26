@@ -1,14 +1,14 @@
 import asyncio
 import logging
+import sys
 from typing import Any, Dict
-from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 
-import sys
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -114,7 +114,7 @@ async def get_entity_meta(client: NeosintezClient, class_name: str) -> Dict[str,
 
             # Превращаем атрибуты из словаря {id: data} в список атрибутов для совместимости
             attributes_list = []
-            if "Attributes" in target_class and target_class["Attributes"]:
+            if target_class.get("Attributes"):
                 for attr_id, attr_data in target_class["Attributes"].items():
                     try:
                         # Создаем базовую структуру атрибута
@@ -132,7 +132,7 @@ async def get_entity_meta(client: NeosintezClient, class_name: str) -> Dict[str,
                         attributes_list.append(attr_dict)
                     except Exception as e:
                         logger.error(
-                            f"Ошибка при обработке атрибута {attr_id}: {str(e)}"
+                            f"Ошибка при обработке атрибута {attr_id}: {e!s}"
                         )
 
             target_class["Attributes"] = attributes_list
@@ -144,7 +144,7 @@ async def get_entity_meta(client: NeosintezClient, class_name: str) -> Dict[str,
         ENTITY_CACHE[class_name] = target_class
 
     except Exception as e:
-        logger.error(f"Ошибка при получении метаданных класса '{class_name}': {str(e)}")
+        logger.error(f"Ошибка при получении метаданных класса '{class_name}': {e!s}")
         raise
 
     return ENTITY_CACHE[class_name]
@@ -169,7 +169,7 @@ def build_attribute_body(attr_meta: Dict[str, Any], value: Any) -> Dict[str, Any
         return utils_build_attribute_body(attr_meta, value)
     except Exception as e:
         logger.warning(
-            f"Ошибка при создании тела атрибута: {str(e)}. Используем обычную версию."
+            f"Ошибка при создании тела атрибута: {e!s}. Используем обычную версию."
         )
 
         # Используем обычную версию функции как запасной вариант
@@ -227,7 +227,7 @@ async def create_object_from_model(
     if not hasattr(model, "Name"):
         raise ValueError("В модели нет обязательного поля 'Name'")
 
-    object_name = getattr(model, "Name")
+    object_name = model.Name
 
     # 2) Создаём объект (Name уходит прямо в WioObjectNode)
     create_payload = {
@@ -305,7 +305,7 @@ async def create_object_from_model(
                     )
                     all_verified = False
             except Exception as e:
-                logger.error(f"Ошибка при проверке атрибута {field_name}: {str(e)}")
+                logger.error(f"Ошибка при проверке атрибута {field_name}: {e!s}")
                 all_verified = False
 
     if all_verified:
@@ -360,10 +360,10 @@ async def main():
                 return object_id
 
             except Exception as e:
-                logger.error(f"Ошибка при создании объекта: {str(e)}", exc_info=True)
+                logger.error(f"Ошибка при создании объекта: {e!s}", exc_info=True)
                 return None
     except Exception as e:
-        logger.error(f"Критическая ошибка при инициализации: {str(e)}", exc_info=True)
+        logger.error(f"Критическая ошибка при инициализации: {e!s}", exc_info=True)
         return None
 
 
@@ -383,5 +383,5 @@ if __name__ == "__main__":
         logger.info("Прервано пользователем")
         sys.exit(130)
     except Exception as e:
-        logger.critical(f"Критическая ошибка: {str(e)}", exc_info=True)
+        logger.critical(f"Критическая ошибка: {e!s}", exc_info=True)
         sys.exit(1)

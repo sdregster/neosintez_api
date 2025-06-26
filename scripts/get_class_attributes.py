@@ -8,7 +8,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 from uuid import UUID
 
 # Загрузка переменных окружения из .env файла
@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
+
 
 load_dotenv()
 
@@ -136,11 +137,11 @@ async def get_class_attributes(class_id: str) -> Dict[str, Any]:
             return result
 
         except NeosintezAuthError as e:
-            logger.error(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка аутентификации: {e!s}")
         except NeosintezConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
 
     return result
 
@@ -237,5 +238,5 @@ if __name__ == "__main__":
         logger.info("Прервано пользователем")
         sys.exit(130)
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")
         sys.exit(1)

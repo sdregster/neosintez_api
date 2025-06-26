@@ -6,10 +6,11 @@
 import json
 import logging
 import os
-from typing import Dict, Any
+from typing import Any, Dict
 
 import pandas as pd
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
@@ -48,13 +49,13 @@ def load_classes_info() -> Dict[str, Any]:
             logger.error(f"Файл с информацией о классах не найден: {classes_file}")
             return {"classes": []}
 
-        with open(classes_file, "r", encoding="utf-8") as f:
+        with open(classes_file, encoding="utf-8") as f:
             data = json.load(f)
 
         logger.info(f"Загружена информация о {len(data.get('classes', []))} классах")
         return data
     except Exception as e:
-        logger.error(f"Ошибка при загрузке информации о классах: {str(e)}")
+        logger.error(f"Ошибка при загрузке информации о классах: {e!s}")
         return {"classes": []}
 
 
@@ -199,7 +200,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Прервано пользователем")
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")
         import traceback
 
         logger.error(f"Трассировка: {traceback.format_exc()}")

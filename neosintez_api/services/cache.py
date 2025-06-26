@@ -6,7 +6,8 @@
 """
 
 import time
-from typing import Any, Dict, Optional, TypeVar, Generic, Callable
+from typing import Any, Callable, Dict, Generic, Optional, TypeVar
+
 
 T = TypeVar("T")
 

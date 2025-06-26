@@ -21,6 +21,7 @@ from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.models import Attribute, EntityClass
 
+
 load_dotenv()
 
 # Настройка логирования
@@ -84,7 +85,7 @@ async def find_class_by_name(
             return matched_classes
 
         except Exception as e:
-            logger.error(f"Ошибка при поиске классов: {str(e)}")
+            logger.error(f"Ошибка при поиске классов: {e!s}")
             return []
 
 
@@ -136,7 +137,7 @@ async def get_class_info_and_attributes(
                 logger.info(f"Получено {len(attributes)} атрибутов")
             except Exception as e:
                 logger.warning(
-                    f"Не удалось получить атрибуты стандартным методом: {str(e)}"
+                    f"Не удалось получить атрибуты стандартным методом: {e!s}"
                 )
                 attributes = []
 
@@ -165,7 +166,7 @@ async def get_class_info_and_attributes(
 
         except Exception as e:
             logger.error(
-                f"Ошибка при получении информации о классе и атрибутах: {str(e)}"
+                f"Ошибка при получении информации о классе и атрибутах: {e!s}"
             )
             return None, []
 
@@ -241,7 +242,7 @@ async def save_class_info_to_file(
 
         return True
     except Exception as e:
-        logger.error(f"Ошибка при сохранении информации в файл: {str(e)}")
+        logger.error(f"Ошибка при сохранении информации в файл: {e!s}")
         return False
 
 
@@ -356,5 +357,5 @@ if __name__ == "__main__":
         logger.info("Прервано пользователем")
         sys.exit(130)
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")
         sys.exit(1)

@@ -11,7 +11,7 @@ import json
 import logging
 import pprint
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Any, Dict, Tuple
 from uuid import UUID
 
 # Загрузка переменных окружения из .env файла
@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
+
 
 load_dotenv()
 
@@ -78,13 +79,13 @@ async def make_api_request(
             return status_code, response
 
         except NeosintezAuthError as e:
-            logger.error(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка аутентификации: {e!s}")
             return 401, {"error": str(e)}
         except NeosintezConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
             return 503, {"error": str(e)}
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
             return 500, {"error": str(e)}
 
 
@@ -292,4 +293,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Прервано пользователем")
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")

@@ -1,7 +1,5 @@
 import asyncio
 
-from pydantic import BaseModel, Field
-
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import NeosintezSettings
 
@@ -35,7 +33,7 @@ async def main():
     #     "POST", "api/objects", data=test_object_payload_for_creation
     # )
     # """
-    # response = 
+    # response =
     # {'EffectivePermissions': 8191, 'Entity': {'Id': '3aa54908-2283-ec11-911c-005056b6948b', 'Name': 'Стройка'}, 'Version': 1, 'VersionTimestamp': '2025-06-26T20:02:22.9687987', 'IsActualVersion': True, 'Id': '3398846a-8552-f011-91e5-005056b6948b', 'Name': 'Тестовая стройка'}
     # """
 
@@ -68,7 +66,7 @@ async def main():
         "GET",
         "api/objects/3aa54908-2283-ec11-911c-005056b6948b",
     )
-    
+
     """
     {
   "Entity": {

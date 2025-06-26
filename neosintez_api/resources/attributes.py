@@ -3,7 +3,7 @@
 """
 
 import logging
-from typing import Dict, List, Optional, Any, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
 from ..models import Attribute, AttributeListResponse
@@ -79,7 +79,7 @@ class AttributesResource(BaseResource):
             if isinstance(result, list):
                 return [Attribute.model_validate(item) for item in result]
         except Exception as e:
-            self._logger.error(f"Ошибка при получении атрибутов для сущности: {str(e)}")
+            self._logger.error(f"Ошибка при получении атрибутов для сущности: {e!s}")
         return []
 
     async def update_values(
@@ -150,7 +150,7 @@ class AttributesResource(BaseResource):
             return True
         except Exception as e:
             self._logger.error(
-                f"Ошибка при установке атрибутов объекта {object_id}: {str(e)}"
+                f"Ошибка при установке атрибутов объекта {object_id}: {e!s}"
             )
             return False
 
@@ -176,7 +176,7 @@ class AttributesResource(BaseResource):
         except Exception as e:
             self._logger.error(
                 f"Ошибка при получении значения атрибута {attribute_id} "
-                f"для объекта {object_id}: {str(e)}"
+                f"для объекта {object_id}: {e!s}"
             )
 
         return None

@@ -21,7 +21,7 @@ def main():
 
     # Загружаем данные из JSON
     try:
-        with open(result_path, "r", encoding="utf-8") as f:
+        with open(result_path, encoding="utf-8") as f:
             content = f.read()
             print(f"Прочитано {len(content)} символов")
             data = json.loads(content)
@@ -29,7 +29,7 @@ def main():
     except json.JSONDecodeError as e:
         print(f"Ошибка декодирования JSON: {e}")
         # Выведем часть содержимого файла
-        with open(result_path, "r", encoding="utf-8") as f:
+        with open(result_path, encoding="utf-8") as f:
             print("Первые 100 символов файла:")
             print(f.read(100))
         return

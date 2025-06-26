@@ -11,7 +11,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 # Загрузка переменных окружения из .env файла
@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.models import EntityClass, Object, SearchFilter, SearchRequest
+
 
 load_dotenv()
 
@@ -73,7 +74,7 @@ async def get_class_by_id(class_id: str) -> Optional[EntityClass]:
             return None
 
         except Exception as e:
-            logger.error(f"Ошибка при получении информации о классе: {str(e)}")
+            logger.error(f"Ошибка при получении информации о классе: {e!s}")
             return None
 
 
@@ -120,7 +121,7 @@ async def get_objects_by_class(class_id: str, limit: int = 10) -> List[Object]:
             return search_result.Result
 
         except Exception as e:
-            logger.error(f"Ошибка при поиске объектов класса: {str(e)}")
+            logger.error(f"Ошибка при поиске объектов класса: {e!s}")
             return []
 
 
@@ -161,7 +162,7 @@ async def get_object_attributes(object_id: str) -> Dict[str, Any]:
             return object_info.Attributes
 
         except Exception as e:
-            logger.error(f"Ошибка при получении атрибутов объекта: {str(e)}")
+            logger.error(f"Ошибка при получении атрибутов объекта: {e!s}")
             return {}
 
 
@@ -218,7 +219,7 @@ async def save_objects_info_to_file(
 
         return True
     except Exception as e:
-        logger.error(f"Ошибка при сохранении информации в файл: {str(e)}")
+        logger.error(f"Ошибка при сохранении информации в файл: {e!s}")
         return False
 
 
@@ -303,5 +304,5 @@ if __name__ == "__main__":
         logger.info("Прервано пользователем")
         sys.exit(130)
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")
         sys.exit(1)

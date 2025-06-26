@@ -12,21 +12,22 @@ from .core import (
     NeosintezTimeoutError,
     NeosintezValidationError,
 )
-from .model_utils import neosintez_model, create_model_from_class_attributes
+from .model_utils import create_model_from_class_attributes, neosintez_model
 from .services.object_service import ObjectService
 
+
 __all__ = [
-    "NeosintezSettings",
-    "NeosintezClient",
-    "NeosintezError",
-    "NeosintezAuthError",
     "NeosintezAPIError",
+    "NeosintezAuthError",
+    "NeosintezClient",
     "NeosintezConnectionError",
+    "NeosintezError",
+    "NeosintezSettings",
     "NeosintezTimeoutError",
     "NeosintezValidationError",
-    "neosintez_model",
-    "create_model_from_class_attributes",
     "ObjectService",
+    "create_model_from_class_attributes",
+    "neosintez_model",
 ]
 
 __version__ = "0.1.0"

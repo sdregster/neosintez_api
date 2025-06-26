@@ -5,10 +5,10 @@
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union, Tuple
+import warnings
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import aiohttp
-import warnings
 
 from .config import NeosintezSettings
 from .exceptions import (
@@ -17,13 +17,13 @@ from .exceptions import (
     NeosintezConnectionError,
     NeosintezTimeoutError,
 )
-from .utils import parse_error_response, retry, CustomJSONEncoder
-
 from .resources import (
-    ObjectsResource,
     AttributesResource,
     ClassesResource,
+    ObjectsResource,
 )
+from .utils import CustomJSONEncoder, parse_error_response, retry
+
 
 # Настройка логгера
 logger = logging.getLogger("neosintez_api")
@@ -31,8 +31,12 @@ logger.setLevel(logging.DEBUG)  # Устанавливаем уровень ло
 
 T = TypeVar("T")
 
-warnings.warn("Импорт из neosintez_api.client устарел, используйте neosintez_api.core.client", DeprecationWarning)
+warnings.warn(
+    "Импорт из neosintez_api.client устарел, используйте neosintez_api.core.client",
+    DeprecationWarning,
+)
 from .core.client import NeosintezClient
+
 
 class NeosintezClient:
     """
@@ -166,10 +170,10 @@ class NeosintezClient:
                         logger.debug("Аутентификация успешна")
                         return self.token
                     except (json.JSONDecodeError, KeyError) as e:
-                        logger.error(f"Ошибка при парсинге ответа: {str(e)}")
+                        logger.error(f"Ошибка при парсинге ответа: {e!s}")
                         logger.error(f"Текст ответа: {response_text[:200]}...")
                         raise NeosintezAuthError(
-                            f"Ошибка при парсинге ответа: {str(e)}"
+                            f"Ошибка при парсинге ответа: {e!s}"
                         )
                 else:
                     response_text = await response.text()
@@ -180,16 +184,16 @@ class NeosintezClient:
                         f"Не удалось авторизоваться. {response.status} - {response_text}"
                     )
         except aiohttp.ClientConnectionError as e:
-            logger.error(f"Ошибка соединения при аутентификации: {str(e)}")
-            raise NeosintezConnectionError(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения при аутентификации: {e!s}")
+            raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")
         except aiohttp.ClientResponseError as e:
-            logger.error(f"Ошибка ответа при аутентификации: {str(e)}")
-            raise NeosintezAuthError(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка ответа при аутентификации: {e!s}")
+            raise NeosintezAuthError(f"Ошибка аутентификации: {e!s}")
         except aiohttp.ClientError as e:
-            logger.error(f"Ошибка клиента при аутентификации: {str(e)}")
-            raise NeosintezAuthError(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка клиента при аутентификации: {e!s}")
+            raise NeosintezAuthError(f"Ошибка аутентификации: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка при аутентификации: {str(e)}")
+            logger.error(f"Неожиданная ошибка при аутентификации: {e!s}")
             logger.error(f"Тип ошибки: {type(e)}")
             import traceback
 
@@ -266,17 +270,19 @@ class NeosintezClient:
 
         try:
             logger.debug(f"Отправка запроса {method} {url}")
-            
+
             # Используем dumps с CustomJSONEncoder для сериализации UUID и других специальных типов
             json_str = None
             if json_data is not None:
                 json_str = json.dumps(json_data, cls=CustomJSONEncoder)
                 logger.debug(f"JSON данные запроса: {json_str}")
-            
+
             async with self.session.request(
-                method, url, params=params, 
+                method,
+                url,
+                params=params,
                 data=json_str if json_str else None,
-                headers=request_headers
+                headers=request_headers,
             ) as response:
                 if response.status < 400:
                     if response.status == 204:  # No Content
@@ -306,16 +312,16 @@ class NeosintezClient:
                     raise NeosintezAPIError(status_code, message, data)
 
         except aiohttp.ClientConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
-            raise NeosintezConnectionError(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
+            raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")
         except aiohttp.ClientResponseError as e:
-            logger.error(f"Ошибка ответа: {str(e)}")
-            raise NeosintezAPIError(e.status, f"Ошибка ответа: {str(e)}")
+            logger.error(f"Ошибка ответа: {e!s}")
+            raise NeosintezAPIError(e.status, f"Ошибка ответа: {e!s}")
         except asyncio.TimeoutError as e:
-            logger.error(f"Таймаут запроса: {str(e)}")
-            raise NeosintezTimeoutError(f"Таймаут запроса: {str(e)}")
+            logger.error(f"Таймаут запроса: {e!s}")
+            raise NeosintezTimeoutError(f"Таймаут запроса: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
             raise
 
     @retry(attempts=2, delay=1)
@@ -379,16 +385,17 @@ class NeosintezClient:
                 return response.status, result
 
         except aiohttp.ClientConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
-            raise NeosintezConnectionError(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
+            raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")
         except aiohttp.ClientResponseError as e:
-            logger.error(f"Ошибка ответа: {str(e)}")
+            logger.error(f"Ошибка ответа: {e!s}")
             return e.status, {"error": str(e)}
         except asyncio.TimeoutError as e:
-            logger.error(f"Таймаут запроса: {str(e)}")
-            raise NeosintezTimeoutError(f"Таймаут запроса: {str(e)}")
+            logger.error(f"Таймаут запроса: {e!s}")
+            raise NeosintezTimeoutError(f"Таймаут запроса: {e!s}")
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
             raise
+
 
 __all__ = ["NeosintezClient", "NeosintezSettings"]

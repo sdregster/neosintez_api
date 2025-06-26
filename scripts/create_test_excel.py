@@ -3,7 +3,9 @@
 """
 
 import os
+
 import pandas as pd
+
 
 # Создаем директорию data, если она не существует
 os.makedirs("data", exist_ok=True)

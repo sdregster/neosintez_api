@@ -8,15 +8,15 @@ import json
 import logging
 import os
 import sys
-from typing import Dict, Any
+from typing import Any, Dict
 
 from dotenv import load_dotenv
+from import_ks2_xlsx_template import NeosintezExcelImporter, UUIDEncoder
 
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
 
-from import_ks2_xlsx_template import NeosintezExcelImporter, UUIDEncoder
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -57,7 +57,7 @@ async def check_objects(object_id: str, deep: bool = False) -> Dict[str, Any]:
                 parent_obj = await client.objects.get_by_id(object_id)
                 logger.info(f"Объект найден: {parent_obj.Name} (ID: {parent_obj.Id})")
             except Exception as e:
-                logger.error(f"Ошибка при получении объекта: {str(e)}")
+                logger.error(f"Ошибка при получении объекта: {e!s}")
                 return {"error": str(e)}
 
             # Создаем имитацию импортера для использования методов проверки
@@ -100,13 +100,13 @@ async def check_objects(object_id: str, deep: bool = False) -> Dict[str, Any]:
             return result
 
         except NeosintezAuthError as e:
-            logger.error(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка аутентификации: {e!s}")
             return {"error": str(e)}
         except NeosintezConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
             return {"error": str(e)}
         except Exception as e:
-            logger.error(f"Неожиданная ошибка: {str(e)}")
+            logger.error(f"Неожиданная ошибка: {e!s}")
             import traceback
 
             logger.error(f"Трассировка: {traceback.format_exc()}")
@@ -172,7 +172,7 @@ if __name__ == "__main__":
         logger.info("Прервано пользователем")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Критическая ошибка: {str(e)}")
+        logger.error(f"Критическая ошибка: {e!s}")
         import traceback
 
         logger.error(traceback.format_exc())

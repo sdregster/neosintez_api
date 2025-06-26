@@ -2,8 +2,8 @@
 Скрипт для создания объекта типа "Папка МВЗ" в Neosintez.
 """
 
-import asyncio
 import argparse
+import asyncio
 import logging
 import sys
 import traceback
@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import load_settings
 from neosintez_api.exceptions import NeosintezAuthError, NeosintezConnectionError
+
 
 load_dotenv()
 
@@ -90,14 +91,14 @@ async def create_folder(parent_id: str, folder_name: str):
                     f"Объект проверен: {created_obj.Name} (ID: {created_obj.Id})"
                 )
             except Exception as e:
-                logger.error(f"Ошибка при проверке созданного объекта: {str(e)}")
+                logger.error(f"Ошибка при проверке созданного объекта: {e!s}")
 
             return created_id
 
         except NeosintezAuthError as e:
-            logger.error(f"Ошибка аутентификации: {str(e)}")
+            logger.error(f"Ошибка аутентификации: {e!s}")
         except NeosintezConnectionError as e:
-            logger.error(f"Ошибка соединения: {str(e)}")
+            logger.error(f"Ошибка соединения: {e!s}")
         except Exception:
             logger.error(f"Неожиданная ошибка: {traceback.format_exc()}")
 

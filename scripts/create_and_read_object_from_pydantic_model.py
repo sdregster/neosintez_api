@@ -7,12 +7,13 @@ import json
 import logging
 import sys
 from typing import Any, Dict, Optional, Type, TypeVar
-from pydantic import BaseModel
 
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 from neosintez_api.client import NeosintezClient
 from neosintez_api.config import NeosintezSettings
+
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -154,7 +155,7 @@ async def get_entity_meta(
 
             # Превращаем атрибуты из словаря {id: data} в список атрибутов для совместимости
             attributes_list = []
-            if "Attributes" in target_class and target_class["Attributes"]:
+            if target_class.get("Attributes"):
                 if isinstance(target_class["Attributes"], dict):
                     # Если атрибуты в формате словаря {id: data}
                     for attr_id, attr_data in target_class["Attributes"].items():
@@ -174,7 +175,7 @@ async def get_entity_meta(
                             attributes_list.append(attr_dict)
                         except Exception as e:
                             logger.error(
-                                f"Ошибка при обработке атрибута {attr_id}: {str(e)}"
+                                f"Ошибка при обработке атрибута {attr_id}: {e!s}"
                             )
                 elif isinstance(target_class["Attributes"], list):
                     # Если атрибуты уже в формате списка
@@ -194,7 +195,7 @@ async def get_entity_meta(
             ENTITY_CACHE[str(target_class["Id"])] = target_class
 
     except Exception as e:
-        logger.error(f"Ошибка при получении метаданных класса '{cache_key}': {str(e)}")
+        logger.error(f"Ошибка при получении метаданных класса '{cache_key}': {e!s}")
         raise
 
     return ENTITY_CACHE[cache_key]
@@ -371,7 +372,7 @@ async def create_object_from_model(
         try:
             await client.objects.set_attributes(object_id, attributes)
         except Exception as e:
-            logger.error(f"Ошибка при установке атрибутов: {str(e)}")
+            logger.error(f"Ошибка при установке атрибутов: {e!s}")
 
     return object_id
 
@@ -469,8 +470,8 @@ async def read_object_to_model(
         logger.info(f"Создана модель: {instance}")
         return instance
     except Exception as e:
-        logger.error(f"Ошибка при создании модели: {str(e)}", exc_info=True)
-        raise ValueError(f"Невозможно создать модель из данных объекта: {str(e)}")
+        logger.error(f"Ошибка при создании модели: {e!s}", exc_info=True)
+        raise ValueError(f"Невозможно создать модель из данных объекта: {e!s}")
 
 
 # ────────────────────────────
@@ -542,10 +543,10 @@ async def main():
                 return object_id, is_equal
 
             except Exception as e:
-                logger.error(f"Ошибка при выполнении операций: {str(e)}", exc_info=True)
+                logger.error(f"Ошибка при выполнении операций: {e!s}", exc_info=True)
                 return None, False
     except Exception as e:
-        logger.error(f"Критическая ошибка при инициализации: {str(e)}", exc_info=True)
+        logger.error(f"Критическая ошибка при инициализации: {e!s}", exc_info=True)
         return None, False
 
 
@@ -574,5 +575,5 @@ if __name__ == "__main__":
         logger.info("Прервано пользователем")
         sys.exit(130)
     except Exception as e:
-        logger.critical(f"Критическая ошибка: {str(e)}", exc_info=True)
+        logger.critical(f"Критическая ошибка: {e!s}", exc_info=True)
         sys.exit(1)

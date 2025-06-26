@@ -5,18 +5,19 @@
 
 import json
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Type, TypeVar
 from uuid import UUID
-from datetime import datetime
 
 import pandas as pd
-from pydantic import BaseModel, Field, create_model
 
 # Загрузка переменных окружения из .env файла
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field, create_model
 
 from neosintez_api.client import NeosintezClient
 from neosintez_api.models import EntityClass
+
 
 load_dotenv()
 
@@ -168,7 +169,7 @@ async def get_entity_meta(
 
             # Превращаем атрибуты из словаря {id: data} в список атрибутов для совместимости
             attributes_list = []
-            if "Attributes" in target_class and target_class["Attributes"]:
+            if target_class.get("Attributes"):
                 if isinstance(target_class["Attributes"], dict):
                     # Если атрибуты в формате словаря {id: data}
                     for attr_id, attr_data in target_class["Attributes"].items():
@@ -188,7 +189,7 @@ async def get_entity_meta(
                             attributes_list.append(attr_dict)
                         except Exception as e:
                             logger.error(
-                                f"Ошибка при обработке атрибута {attr_id}: {str(e)}"
+                                f"Ошибка при обработке атрибута {attr_id}: {e!s}"
                             )
                 elif isinstance(target_class["Attributes"], list):
                     # Если атрибуты уже в формате списка
@@ -208,7 +209,7 @@ async def get_entity_meta(
             ENTITY_CACHE[str(target_class["Id"])] = target_class
 
     except Exception as e:
-        logger.error(f"Ошибка при получении метаданных класса '{cache_key}': {str(e)}")
+        logger.error(f"Ошибка при получении метаданных класса '{cache_key}': {e!s}")
         raise
 
     return ENTITY_CACHE[cache_key]
@@ -287,7 +288,7 @@ class PydanticExcelParser:
 
             return self.df
         except Exception as e:
-            logger.error(f"Ошибка при загрузке Excel файла: {str(e)}")
+            logger.error(f"Ошибка при загрузке Excel файла: {e!s}")
             raise
 
     def _check_headers(self):
@@ -428,7 +429,7 @@ class PydanticExcelParser:
             logger.info(f"Получено {len(entities)} классов")
             return self.classes_map
         except Exception as e:
-            logger.error(f"Ошибка при получении классов: {str(e)}")
+            logger.error(f"Ошибка при получении классов: {e!s}")
             raise
 
     async def create_pydantic_model_for_class(
@@ -655,12 +656,12 @@ class PydanticExcelParser:
                     logger.debug(f"Создана модель для объекта '{name}' уровня {level}")
                 except Exception as e:
                     logger.error(
-                        f"Ошибка при создании модели для объекта '{name}': {str(e)}"
+                        f"Ошибка при создании модели для объекта '{name}': {e!s}"
                     )
                     continue
 
             except Exception as e:
-                logger.error(f"Ошибка обработки строки {idx}: {str(e)}")
+                logger.error(f"Ошибка обработки строки {idx}: {e!s}")
                 continue
 
         # Выводим статистику по созданным моделям
