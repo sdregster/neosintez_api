@@ -9,7 +9,6 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-
 class TokenResponse(BaseModel):
     """
     Ответ с токеном доступа от API.
@@ -243,7 +242,7 @@ class AttributeModel(BaseModel):
     class Config:
         """Конфигурация модели."""
 
-        allow_population_by_field_name = True
+        validate_by_name = True
         """Разрешает заполнение модели как по именам полей, так и по алиасам."""
 
 
@@ -274,5 +273,4 @@ class EquipmentModel(BaseModel):
     class Config:
         """Конфигурация модели."""
 
-        allow_population_by_field_name = True
-        """Разрешает заполнение модели как по именам полей, так и по алиасам."""
+        validate_by_name = True

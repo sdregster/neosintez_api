@@ -1,56 +1,105 @@
 """
-Модуль с исключениями, которые могут возникать при работе с API Неосинтез.
+Модуль с пользовательскими исключениями для API Неосинтез.
 """
 
+from typing import Any
 
-class NeosintezError(Exception):
+
+class ApiError(Exception):
     """
-    Базовое исключение для ошибок API Неосинтез.
-
-    Attributes:
-        message: Сообщение об ошибке
+    Базовый класс для всех исключений API Неосинтез.
     """
 
-    def __init__(self, message: str):
+    def __init__(self, message: str, details: Any = None):
         """
         Инициализирует исключение.
 
         Args:
             message: Сообщение об ошибке
+            details: Дополнительные детали ошибки
         """
         self.message = message
-        super().__init__(self.message)
+        self.details = details
+        super().__init__(message)
 
 
-class NeosintezAuthError(NeosintezError):
+class AuthenticationError(ApiError):
+    """
+    Исключение для ошибок аутентификации.
+    """
+
+    pass
+
+
+class NotFoundError(ApiError):
+    """
+    Исключение для случаев, когда ресурс не найден.
+    """
+
+    pass
+
+
+class ValidationError(ApiError):
+    """
+    Исключение для ошибок валидации данных.
+    """
+
+    pass
+
+
+class RequestError(ApiError):
+    """
+    Исключение для ошибок запроса к API.
+    """
+
+    pass
+
+
+class ModelValidationError(ApiError):
+    """
+    Исключение для ошибок валидации Pydantic-моделей.
+    """
+
+    pass
+
+
+class NeosintezAuthError(ApiError):
     """Ошибка аутентификации в API Неосинтез."""
 
     pass
 
 
-class NeosintezAPIError(NeosintezError):
+class NeosintezAPIError(ApiError):
     """Ошибка при вызове API Неосинтез."""
 
-    def __init__(self, status_code, message, response_data=None):
+    def __init__(self, status_code: int, message: str, details: Any = None):
         self.status_code = status_code
         self.message = message
-        self.response_data = response_data
-        super().__init__(f"Ошибка API Неосинтез [{status_code}]: {message}")
+        self.details = details
+        super().__init__(f"Ошибка API Неосинтез [{status_code}]: {message}", details)
 
 
-class NeosintezConnectionError(NeosintezError):
+class NeosintezConnectionError(ApiError):
     """Ошибка соединения с сервером API Неосинтез."""
 
     pass
 
 
-class NeosintezTimeoutError(NeosintezError):
+class NeosintezTimeoutError(ApiError):
     """Ошибка таймаута при запросе к API Неосинтез."""
 
     pass
 
 
-class NeosintezValidationError(NeosintezError):
+class NeosintezValidationError(ApiError):
     """Ошибка валидации данных для API Неосинтез."""
+
+    pass
+
+
+class ModelValidationError(ApiError):
+    """
+    Ошибка валидации модели.
+    """
 
     pass

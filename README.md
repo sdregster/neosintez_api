@@ -1,104 +1,133 @@
-# API-клиент для Neosintez
+# Neosintez API
 
-Этот пакет предоставляет асинхронный Python-клиент для взаимодействия с API Neosintez.
+Библиотека для работы с API Неосинтез через Python.
 
 ## Установка
 
-```shell
-pip install -e .
+```bash
+pip install neosintez-api
 ```
 
 ## Настройка
 
-Для работы API-клиента необходимо настроить параметры подключения. Это можно сделать через переменные окружения или через файл `.env`.
-
-Пример файла `.env`:
+Для работы с API необходимо создать файл `.env` в корне проекта со следующими переменными:
 
 ```
-NEOSINTEZ_BASE_URL=https://neosintez.example.com/
+NEOSINTEZ_BASE_URL=https://your-neosintez-instance.com/
 NEOSINTEZ_USERNAME=your_username
 NEOSINTEZ_PASSWORD=your_password
 NEOSINTEZ_CLIENT_ID=your_client_id
 NEOSINTEZ_CLIENT_SECRET=your_client_secret
+NEOSINTEZ_TEST_FOLDER_ID=your_test_folder_id  # Опционально, для тестов
 ```
-
-**Важно**: URL должен заканчиваться на слеш (`/`).
 
 ## Использование
 
-### Базовый пример
+### Базовое использование
 
 ```python
 import asyncio
-from dotenv import load_dotenv
-from neosintez_api.client import NeosintezClient
-from neosintez_api.config import load_settings
-
-# Загрузка настроек из .env
-load_dotenv()
-settings = load_settings()
+from neosintez_api import NeosintezClient, NeosintezSettings
 
 async def main():
-    async with NeosintezClient(settings) as client:
-        # Аутентификация
-        token = await client.auth()
-        print(f"Получен токен: {token[:10]}...")
-        
-        # Получение списка классов
-        classes = await client.get_classes()
-        print(f"Получено {len(classes)} классов")
-        
-        # Получение списка атрибутов
-        attributes = await client.get_attributes()
-        print(f"Получено {len(attributes)} атрибутов")
+    # Загрузка настроек из .env
+    settings = NeosintezSettings()
+    
+    # Создание клиента
+    client = NeosintezClient(settings)
+    
+    # Получение классов
+    classes = await client.classes.get_all()
+    print(f"Получено {len(classes)} классов")
+    
+    # Получение объектов
+    objects = await client.objects.get_children("parent-id")
+    print(f"Получено {len(objects)} объектов")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Поиск объектов
+### Работа с моделями Pydantic
+
+Библиотека предоставляет удобные инструменты для работы с объектами через модели Pydantic.
+
+#### Декоратор `neosintez_model`
+
+Декоратор `neosintez_model` добавляет в модель Pydantic метаданные и методы для работы с API Неосинтез:
 
 ```python
-from neosintez_api.models import SearchRequest, SearchFilter
-from uuid import UUID
+from pydantic import BaseModel, Field
+from neosintez_api import neosintez_model
 
-async def search_example(client, class_id):
-    # Создаем запрос на поиск объектов указанного класса
-    request = SearchRequest(Filters=[SearchFilter(Type=5, Value=str(class_id))])
-    
-    # Запрос с пагинацией
-    response = await client.search(request, take=10, skip=0)
-    print(f"Найдено всего: {response.Total} объектов")
-    
-    # Поиск всех объектов с автоматической пагинацией
-    all_objects = await client.search_all(request)
-    print(f"Найдено всего: {len(all_objects)} объектов")
+@neosintez_model(class_name="Папка МВЗ")
+class FolderModel(BaseModel):
+    """Модель для папки МВЗ"""
+    Name: str
+    mvz: Optional[str] = Field(None, alias="МВЗ")
+    adept_id: Optional[str] = Field(None, alias="ID стройки Адепт")
 ```
 
-### Получение пути к объекту
+Декоратор добавляет следующие методы:
+
+- `get_object_name()` - получение имени объекта из модели
+- `get_attribute_data()` - получение данных модели с алиасами в качестве ключей
+- `get_field_to_attribute_mapping()` - получение маппинга полей модели на атрибуты Неосинтеза
+
+#### Создание моделей из атрибутов класса
+
+Функция `create_model_from_class_attributes` позволяет создавать модели Pydantic на основе атрибутов класса из Неосинтеза:
 
 ```python
-async def get_path_example(client, item_id):
-    path = await client.get_item_path(item_id)
-    
-    # Вывод пути в формате дерева
-    path_str = " -> ".join([ancestor.Name for ancestor in path.AncestorsOrSelf])
-    print(f"Путь: {path_str}")
+from neosintez_api import create_model_from_class_attributes
+
+# Получение атрибутов класса
+classes = await client.classes.get_classes_by_name("Папка МВЗ")
+class_id = classes[0]["id"]
+class_attributes = await client.classes.get_attributes(class_id)
+
+# Создание модели из атрибутов класса
+DynamicModel = create_model_from_class_attributes(
+    "Папка МВЗ", 
+    class_attributes
+)
+
+# Создание экземпляра модели
+instance = DynamicModel(
+    Name="Тестовая папка",
+    мвз="12345"  # Поля создаются с именами в нижнем регистре
+)
 ```
 
-### Обновление атрибутов объекта
+### Сервисный слой для работы с объектами
+
+Класс `ObjectService` предоставляет удобный интерфейс для работы с объектами через модели Pydantic:
 
 ```python
-async def update_attributes_example(client, item_id):
-    attributes = {
-        "Имя_атрибута": "Значение",
-        "Другой_атрибут": 123
-    }
-    
-    success = await client.update_attributes(item_id, attributes)
-    if success:
-        print("Атрибуты успешно обновлены")
+from neosintez_api import ObjectService
+
+# Создание сервиса объектов
+object_service = ObjectService(client)
+
+# Создание объекта из модели
+folder = FolderModel(
+    Name="Тестовая папка МВЗ",
+    mvz="12345",
+    adept_id="ADEPT-001"
+)
+folder_id = await object_service.create(folder, parent_id)
+
+# Чтение объекта в модель
+read_folder = await object_service.read(folder_id, FolderModel)
+
+# Обновление атрибутов
+read_folder.mvz = "54321"
+updated = await object_service.update_attrs(folder_id, read_folder)
 ```
+
+## Примеры
+
+Примеры использования библиотеки находятся в папке `scripts/`.
 
 ## Типичные проблемы и их решения
 

@@ -3,10 +3,13 @@
 """
 
 import logging
-from typing import List, Optional, Any, Dict
+from typing import Any, Dict, List, Optional
 
-from ..models import EntityClass, Attribute
+from ..models import Attribute, EntityClass
 from .base import BaseResource
+
+# Настройка логгера
+logger = logging.getLogger("neosintez_api.resources.classes")
 
 
 class ClassesResource(BaseResource):
@@ -48,6 +51,38 @@ class ClassesResource(BaseResource):
         if isinstance(result, list):
             return result
         return []
+
+    async def get_classes_by_name(self, name: str) -> List[Dict[str, Any]]:
+        """
+        Ищет классы по имени среди всех классов в API.
+
+        Args:
+            name: Название класса или его часть
+
+        Returns:
+            List[Dict[str, Any]]: Список найденных классов
+        """
+        try:
+            # Получаем все классы
+            all_classes = await self.get_all()
+            logger.debug(f"Получено {len(all_classes)} классов для поиска '{name}'")
+
+            # Фильтруем классы по имени (нечувствительно к регистру)
+            name_lower = name.lower()
+            matches = []
+
+            for cls in all_classes:
+                if name_lower in cls.Name.lower():
+                    matches.append({"id": str(cls.Id), "name": cls.Name})
+
+            logger.debug(
+                f"Найдено {len(matches)} классов с именем, содержащим '{name}'"
+            )
+            return matches
+
+        except Exception as e:
+            logger.error(f"Ошибка при поиске классов по имени '{name}': {str(e)}")
+            return []
 
     async def get_by_id(self, entity_id: str) -> Optional[EntityClass]:
         """
@@ -130,7 +165,7 @@ class ClassesResource(BaseResource):
                                 # Создаем объект атрибута
                                 attributes.append(Attribute.model_validate(attr_dict))
                             except Exception as e:
-                                logging.error(
+                                logger.error(
                                     f"Ошибка при обработке атрибута {attr_id}: {str(e)}"
                                 )
                                 # Добавляем минимальную информацию об атрибуте
@@ -144,7 +179,7 @@ class ClassesResource(BaseResource):
             return await self._get_attributes_from_common_endpoint(class_id)
 
         except Exception as e:
-            logging.error(f"Ошибка при получении атрибутов класса {class_id}: {str(e)}")
+            logger.error(f"Ошибка при получении атрибутов класса {class_id}: {str(e)}")
             # Пробуем получить атрибуты через общий эндпоинт как запасной вариант
             return await self._get_attributes_from_common_endpoint(class_id)
 
@@ -175,14 +210,14 @@ class ClassesResource(BaseResource):
                         if attr.get("EntityId") and str(attr["EntityId"]) == class_id:
                             class_attributes.append(Attribute.model_validate(attr))
                     except Exception as e:
-                        logging.error(
+                        logger.error(
                             f"Ошибка при обработке атрибута через общий эндпоинт: {str(e)}"
                         )
 
                 return class_attributes
             return []
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"Ошибка при получении атрибутов через общий эндпоинт для класса {class_id}: {str(e)}"
             )
             return []

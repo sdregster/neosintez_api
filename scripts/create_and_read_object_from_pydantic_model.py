@@ -3,16 +3,16 @@
 """
 
 import asyncio
+import json
 import logging
-from typing import Any, Dict, Type, Optional, TypeVar
-from pydantic import BaseModel, Field
+import sys
+from typing import Any, Dict, Optional, Type, TypeVar
+from pydantic import BaseModel
 
 from dotenv import load_dotenv
 
 from neosintez_api.client import NeosintezClient
-from neosintez_api.config import load_settings
-
-import sys
+from neosintez_api.config import NeosintezSettings
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -32,10 +32,17 @@ T = TypeVar("T", bound=BaseModel)
 #  1. Pydantic-модель пользователя
 # ────────────────────────────
 class SomeRandomModel(BaseModel):
+    """
+    Тестовая модель для демонстрации создания объектов из Pydantic-моделей.
+    """
+
     __class_name__ = "Папка МВЗ"
 
     Name: str
-    МВЗ: str = Field(alias="МВЗ")
+    МВЗ: Optional[str] = None
+
+    class Config:
+        validate_by_name = True
 
 
 # ────────────────────────────
@@ -196,29 +203,60 @@ async def get_entity_meta(
 def build_attribute_body(attr_meta: Dict[str, Any], value: Any) -> Dict[str, Any]:
     """
     Превращает «сырое» значение из модели в тело атрибута WioObjectAttribute.
+
+    Args:
+        attr_meta: Метаданные атрибута
+        value: Значение атрибута
+
+    Returns:
+        Dict[str, Any]: Тело атрибута для API запроса
     """
-    return {
-        "Name": attr_meta["Name"],  # Используем реальное имя атрибута
-        "Id": attr_meta["Id"],
-        "Type": attr_meta["Type"],
-        "Value": value,
+    attr_id = attr_meta["Id"]
+    attr_type = attr_meta.get("Type", 0)
+
+    # Формируем тело запроса в зависимости от типа атрибута
+    body = {
+        "Id": attr_id,
+        "Type": attr_type,
     }
+
+    # Добавляем значение в правильном формате в зависимости от типа атрибута
+    if attr_type == 0:  # Строка
+        body["Value"] = str(value)
+    elif attr_type == 1:  # Целое число
+        body["Value"] = int(value) if value else 0
+    elif attr_type == 2:  # Ссылка на объект
+        body["Value"] = str(value)
+    elif attr_type == 3:  # Дата
+        body["Value"] = value
+    elif attr_type == 4:  # Булево
+        body["Value"] = bool(value)
+    elif attr_type == 5:  # Вещественное число
+        body["Value"] = float(value) if value else 0.0
+    elif attr_type == 6:  # Массив строк
+        body["Value"] = value if isinstance(value, list) else [str(value)]
+    elif attr_type == 7:  # Массив ссылок
+        body["Value"] = value if isinstance(value, list) else [str(value)]
+    elif attr_type == 8:  # Ссылка на справочник
+        body["Value"] = str(value)
+    else:
+        body["Value"] = str(value)
+
+    return body
 
 
 # ────────────────────────────
 #  3. Основная процедура создания объекта
 # ────────────────────────────
 async def create_object_from_model(
-    client: NeosintezClient,
-    model: BaseModel,
-    parent_id: str,
+    client: NeosintezClient, model: BaseModel, parent_id: str
 ) -> str:
     """
-    Создает объект в Neosintez на основе Pydantic-модели.
+    Создает объект в Неосинтезе на основе Pydantic-модели.
 
     Args:
-        client: Клиент API Neosintez
-        model: Модель данных для создания объекта
+        client: Клиент API Неосинтеза
+        model: Pydantic-модель объекта
         parent_id: ID родительского объекта
 
     Returns:
@@ -227,74 +265,113 @@ async def create_object_from_model(
     # Получаем имя класса из модели
     class_name = getattr(model.__class__, "__class_name__", None)
     if not class_name:
-        raise ValueError("В модели не указано имя класса через __class_name__")
-
-    logger.info(f"Создание объекта типа '{class_name}'")
-
-    # 1) Находим метаданные класса и атрибутов
-    entity = await get_entity_meta(client, class_name)
-    class_id = entity["Id"]
-
-    # Маппинг «Название атрибута → метаданные»
-    attr_by_name = {a["Name"]: a for a in entity["Attributes"]}
-    logger.debug(
-        f"Доступные атрибуты класса '{class_name}': {', '.join(attr_by_name.keys())}"
-    )
-
-    # Если атрибутов нет, выдаем предупреждение
-    if not attr_by_name:
-        logger.warning(
-            f"Класс '{class_name}' не имеет атрибутов! Будет создан объект без атрибутов."
-        )
+        raise ValueError("Модель должна иметь атрибут __class_name__")
 
     # Получаем имя объекта из модели
-    if not hasattr(model, "Name"):
-        raise ValueError("В модели нет обязательного поля 'Name'")
+    object_name = None
 
-    object_name = getattr(model, "Name")
+    # Сначала проверяем прямой доступ к полю Name
+    if hasattr(model, "Name"):
+        object_name = model.Name
+    # Затем проверяем поля с алиасом Name
+    else:
+        for field_name, field_info in model.__class__.model_fields.items():
+            if hasattr(field_info, "alias") and field_info.alias == "Name":
+                object_name = getattr(model, field_name)
+                break
 
-    # 2) Создаём объект (Name уходит прямо в WioObjectNode)
-    create_payload = {
-        "Name": object_name,
-        "Entity": {
-            "Id": str(class_id),
-            "Name": entity["Name"],
-        },  # Преобразуем UUID в строку
-        # Добавляем обязательные поля
-        "IsActualVersion": True,
-        "Version": 1,
-        "VersionTimestamp": "2023-01-01T00:00:00Z",
-    }
+    if not object_name:
+        raise ValueError("Модель должна иметь поле с именем 'Name' или с alias='Name'")
 
-    logger.info(f"Создание объекта '{object_name}' в родительском объекте {parent_id}")
-    object_id = await client.objects.create(parent_id, create_payload)
-    logger.info(f"Объект успешно создан. ID: {object_id}")
+    # Получаем классы вместе с атрибутами одним запросом
+    all_classes_with_attrs = await client.classes.get_all_with_attributes()
 
-    # 3) Подготавливаем набор атрибутов (кроме Name)
-    attributes_body = []
+    # Ищем нужный класс по имени
+    target_class = None
+    for cls in all_classes_with_attrs:
+        if cls.get("Name") == class_name:
+            target_class = cls
+            break
 
-    # Итерируем по всем полям модели, кроме Name
-    for field_name, field_value in model.__dict__.items():
-        if field_name == "Name" or field_value is None:
-            # Name уже установлен при создании объекта, None-значения пропускаем
+    # Если не нашли, используем обычный метод
+    if not target_class:
+        classes = await client.classes.get_all()
+        for cls in classes:
+            if cls.Name == class_name:
+                target_class = cls
+                break
+
+    if not target_class:
+        raise ValueError(f"Класс '{class_name}' не найден в API")
+
+    # Получаем ID класса
+    class_id = (
+        target_class.get("Id") if isinstance(target_class, dict) else target_class.Id
+    )
+
+    # Создаем объект
+    logger.info(
+        f"Создание объекта '{object_name}' класса '{class_name}' в родителе {parent_id}"
+    )
+    object_data = {"Name": object_name, "Entity": {"Id": class_id, "Name": class_name}}
+    object_id = await client.objects.create(parent_id, object_data)
+
+    if not object_id:
+        raise ValueError(f"Не удалось создать объект '{object_name}'")
+
+    logger.info(f"Объект создан с ID: {object_id}")
+
+    # Подготавливаем атрибуты
+    attributes = []
+    attr_by_name = {}
+
+    # Получаем атрибуты класса
+    class_attributes = (
+        target_class.get("Attributes", []) if isinstance(target_class, dict) else []
+    )
+
+    # Создаем словарь атрибутов по имени
+    for attr in class_attributes:
+        if isinstance(attr, dict) and "Name" in attr:
+            attr_by_name[attr["Name"]] = attr
+        else:
+            logger.warning(f"Пропущен атрибут с неверным форматом: {attr}")
+
+    # Преобразуем модель в словарь с учетом алиасов
+    model_dict = model.model_dump(by_alias=True)
+
+    # Добавляем атрибуты из модели
+    for field_name, field_info in model.model_fields.items():
+        alias = field_info.alias or field_name
+
+        # Пропускаем Name - он уже использован при создании объекта
+        if alias == "Name":
             continue
 
-        # Ищем соответствующий атрибут в классе по имени
-        if field_name in attr_by_name:
-            attr_meta = attr_by_name[field_name]
-            attributes_body.append(build_attribute_body(attr_meta, field_value))
-            logger.info(f"Подготовлен атрибут {field_name}={field_value}")
-        else:
-            logger.warning(f"Атрибут '{field_name}' не найден в классе '{class_name}'")
+        # Получаем значение поля
+        value = model_dict.get(alias)
+        if value is None:
+            continue
 
-    # 4) Записываем атрибуты, если есть что писать
-    if attributes_body:
-        logger.info(
-            f"Установка {len(attributes_body)} атрибутов для объекта {object_id}"
+        # Ищем соответствующий атрибут в классе
+        if alias in attr_by_name:
+            attr_meta = attr_by_name[alias]
+            attr_body = build_attribute_body(attr_meta, value)
+            attributes.append(attr_body)
+            logger.info(f"Подготовлен атрибут {alias}={value}")
+
+    # Устанавливаем атрибуты, если они есть
+    if attributes:
+        logger.info(f"Установка {len(attributes)} атрибутов для объекта {object_id}")
+        # Отладочный вывод для анализа запроса
+        logger.debug(
+            f"Запрос на установку атрибутов: {json.dumps(attributes, ensure_ascii=False, indent=2)}"
         )
-        success = await client.attributes.set_attributes(object_id, attributes_body)
-        if not success:
-            logger.error("Ошибка при установке атрибутов!")
+
+        try:
+            await client.objects.set_attributes(object_id, attributes)
+        except Exception as e:
+            logger.error(f"Ошибка при установке атрибутов: {str(e)}")
 
     return object_id
 
@@ -405,7 +482,7 @@ async def main():
     """
     try:
         # Загрузка настроек из переменных окружения
-        settings = load_settings()
+        settings = NeosintezSettings()
         logger.info(f"Загружены настройки для подключения к {settings.base_url}")
 
         async with NeosintezClient(settings) as client:
@@ -416,7 +493,7 @@ async def main():
                 logger.info(f"Успешная аутентификация, получен токен: {token[:10]}...")
 
                 # ID родительского объекта
-                parent_id = "e8ca0ee1-e750-f011-91e5-005056b6948b"  # корневая папка
+                parent_id = settings.test_folder_id
                 logger.info(f"Используем родительский объект: {parent_id}")
 
                 # 1) Создаем исходную модель объекта

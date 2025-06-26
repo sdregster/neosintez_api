@@ -3,6 +3,7 @@
 """
 
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
@@ -16,6 +17,9 @@ from ..models import (
 )
 from ..utils import chunk_list
 from .base import BaseResource
+
+# Настройка логгера
+logger = logging.getLogger("neosintez_api.resources.objects")
 
 
 class ObjectsResource(BaseResource):
@@ -68,22 +72,47 @@ class ObjectsResource(BaseResource):
         endpoint = "api/objects"
         params = {"parent": str(parent_id)}
 
-        result = await self._request("POST", endpoint, params=params, data=data)
-        if isinstance(result, dict) and "Id" in result:
-            return result["Id"]
+        # Создаем копию данных для модификации
+        create_data = {}
 
-        # Если результат не содержит Id, возвращаем пустую строку
-        from ..exceptions import NeosintezAPIError
+        # Добавляем только необходимые поля для создания объекта
+        if "Name" in data:
+            create_data["Name"] = data["Name"]
 
-        if isinstance(result, dict):
-            # Если результат - словарь, но без Id, возможно это ошибка
-            error_message = result.get(
-                "Message", "Неизвестная ошибка при создании объекта"
-            )
-            raise NeosintezAPIError(400, error_message, str(result))
-        else:
-            # Если результат не словарь, возвращаем пустую строку
-            return ""
+        # Добавляем Entity в правильном формате
+        if (
+            "Entity" in data
+            and isinstance(data["Entity"], dict)
+            and "Id" in data["Entity"]
+        ):
+            create_data["Entity"] = {"Id": str(data["Entity"]["Id"])}
+            if "Name" in data["Entity"]:
+                create_data["Entity"]["Name"] = data["Entity"]["Name"]
+
+        # Отладочный вывод для анализа запроса
+        import json
+
+        logger.debug(
+            f"Отправка запроса на создание объекта: {json.dumps(create_data, ensure_ascii=False, indent=2)}"
+        )
+
+        result = await self._request("POST", endpoint, params=params, data=create_data)
+
+        if isinstance(result, str):
+            object_id = result.strip('"')
+
+            # Если есть атрибуты для установки, устанавливаем их
+            if "Attributes" in data and data["Attributes"]:
+                try:
+                    await self.set_attributes(object_id, data["Attributes"])
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка при установке атрибутов для нового объекта: {str(e)}"
+                    )
+
+            return object_id
+
+        return result
 
     async def update(self, object_id: Union[str, UUID], data: Dict[str, Any]) -> bool:
         """
@@ -341,3 +370,41 @@ class ObjectsResource(BaseResource):
         request = SearchRequest(Filters=filters)
 
         return await self.search_all(request)
+
+    async def set_attributes(
+        self, object_id: Union[str, UUID], attributes: List[Dict[str, Any]]
+    ) -> bool:
+        """
+        Устанавливает атрибуты объекта.
+
+        Args:
+            object_id: ID объекта
+            attributes: Список атрибутов для установки
+
+        Returns:
+            bool: True, если атрибуты успешно установлены
+
+        Raises:
+            ApiError: Если произошла ошибка при установке атрибутов
+        """
+        if not attributes:
+            logger.warning("Нет атрибутов для установки")
+            return True
+
+        endpoint = f"api/objects/{object_id}/attributes"
+
+        # Отладочный вывод для анализа запроса
+        import json
+
+        logger.debug(
+            f"Отправка запроса на установку атрибутов: {json.dumps(attributes, ensure_ascii=False, indent=2)}"
+        )
+
+        try:
+            await self._request("PUT", endpoint, data=attributes)
+            return True
+        except Exception as e:
+            logger.error(
+                f"Ошибка при установке атрибутов объекта {object_id}: {str(e)}"
+            )
+            raise
