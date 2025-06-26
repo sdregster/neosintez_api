@@ -4,9 +4,22 @@
 
 
 class NeosintezError(Exception):
-    """Базовый класс для всех исключений, связанных с API Неосинтез."""
+    """
+    Базовое исключение для ошибок API Неосинтез.
 
-    pass
+    Attributes:
+        message: Сообщение об ошибке
+    """
+
+    def __init__(self, message: str):
+        """
+        Инициализирует исключение.
+
+        Args:
+            message: Сообщение об ошибке
+        """
+        self.message = message
+        super().__init__(self.message)
 
 
 class NeosintezAuthError(NeosintezError):
