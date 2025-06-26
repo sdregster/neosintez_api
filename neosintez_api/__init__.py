@@ -14,6 +14,7 @@ from .core import (
 )
 from .model_utils import create_model_from_class_attributes, neosintez_model
 from .services.object_service import ObjectService
+from .cli import cli
 
 
 __all__ = [

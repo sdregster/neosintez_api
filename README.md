@@ -148,4 +148,34 @@ updated = await object_service.update_attrs(folder_id, read_folder)
 
 ### 3. ValidationError при загрузке настроек
 
-Убедитесь, что все необходимые параметры указаны в `.env` файле или переменных окружения. 
+Убедитесь, что все необходимые параметры указаны в `.env` файле или переменных окружения.
+
+## CLI (Командная строка)
+
+Для работы CLI необходимы зависимости:
+
+```
+pip install click>=8.1.0 rich>=13.0.0
+```
+
+### Примеры использования
+
+```bash
+# Получение объекта по ID
+neosintez object get 12345-abcd-67890
+
+# Создание объекта с атрибутами
+neosintez object create --class "Оборудование" --name "Насос Д200" --parent 67890-abcd-12345
+
+# Импорт из Excel с прогресс-баром
+neosintez import excel --file data.xlsx --model EquipmentModel --parent 12345-abcd-67890
+```
+
+### Архитектура CLI
+
+- Все команды CLI реализованы в папке `neosintez_api/cli/commands/`
+- Точка входа: `neosintez_api/__main__.py` и `pyproject.toml` ([project.scripts])
+- Используется Click для структуры команд и опций
+- Для красивого вывода и прогресса — Rich
+- Поддерживается режим `--dry-run` для безопасного тестирования
+- Примеры расширения: добавьте новую команду в `commands/` и зарегистрируйте её в `cli/__init__.py` 
