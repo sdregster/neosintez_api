@@ -5,8 +5,8 @@
 import asyncio
 import traceback
 
-from neosintez_api.client import NeosintezClient
-from neosintez_api.config import NeosintezSettings
+from neosintez_api.config import NeosintezConfig
+from neosintez_api.core.client import NeosintezClient
 from neosintez_api.services import DynamicModelFactory
 from neosintez_api.utils import generate_field_name
 
@@ -32,7 +32,7 @@ async def main():
         class_name_aliases=["Класс", "Имя класса", "className"],
     )
 
-    settings = NeosintezSettings()
+    settings = NeosintezConfig()
     client = NeosintezClient(settings)
 
     try:
@@ -41,14 +41,14 @@ async def main():
 
         print("\n--- Итог ---")
         print(f"Класс для создания в Неосинтез: '{blueprint.class_name}'")
-        print(f"Имя объекта для создания: '{blueprint.object_name}'")
+        print(f"Имя объекта для создания: '{blueprint.model_instance.name}'")
         print("\nГотовая Pydantic-модель с атрибутами:")
-        print(blueprint.attributes_model.model_dump_json(by_alias=True, indent=4))
+        print(blueprint.model_instance.model_dump_json(by_alias=True, indent=4))
 
         print("\nПроверка доступа к полю 'МВЗ':")
         mvz_field_name = generate_field_name("МВЗ")
         print(
-            f"  - blueprint.attributes_model.{mvz_field_name} = {getattr(blueprint.attributes_model, mvz_field_name)}"
+            f"  - blueprint.model_instance.{mvz_field_name} = {getattr(blueprint.model_instance, mvz_field_name)}"
         )
 
     except Exception as e:

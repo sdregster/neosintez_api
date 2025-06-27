@@ -2,15 +2,17 @@
 Конфигурационные параметры для работы с API Неосинтез.
 """
 
+from functools import lru_cache
 from typing import Optional
 
 from pydantic import AnyHttpUrl
 from pydantic_settings import BaseSettings
 
 
-class NeosintezSettings(BaseSettings):
+class NeosintezConfig(BaseSettings):
     """
-    Настройки подключения к API Неосинтез.
+    Настройки для подключения к API Неосинтез.
+    Читаются из переменных окружения или .env файла.
 
     Attributes:
         base_url: URL API Неосинтез
@@ -22,6 +24,7 @@ class NeosintezSettings(BaseSettings):
         timeout: Таймаут запроса в секундах
         verify_ssl: Проверять SSL сертификаты
         test_folder_id: ID тестовой папки для создания объектов в тестах
+        test_folder_id_2: ID второй тестовой папки для создания объектов в тестах
     """
 
     base_url: AnyHttpUrl
@@ -33,6 +36,7 @@ class NeosintezSettings(BaseSettings):
     timeout: int = 60
     verify_ssl: bool = True
     test_folder_id: Optional[str] = None
+    test_folder_id_2: Optional[str] = None
 
     # Настройки кэша метаданных
     metadata_cache_ttl: int = 1800  # 30 минут в секундах
@@ -53,3 +57,11 @@ class NeosintezSettings(BaseSettings):
         validate_by_name = True
         env_file = ".env"
         extra = "ignore"
+
+
+@lru_cache
+def get_settings() -> NeosintezConfig:
+    """
+    Возвращает экземпляр настроек, используя кеширование.
+    """
+    return NeosintezConfig()

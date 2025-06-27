@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.progress import track
 from rich.table import Table
 
-from neosintez_api.config import NeosintezSettings
+from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
 from neosintez_api.hierarchical_excel_import import HierarchicalExcelImporter
 from neosintez_api.resources.classes import ClassesResource
@@ -33,11 +33,11 @@ def excel(file_path, model_name, parent_id, dry_run):
     console = Console()
     if dry_run:
         console.print(f"[yellow]Режим dry-run. Импорт не будет выполнен. Проверка файла:[/] {file_path}")
-        for step in track(range(5), description="Проверка..."):
+        for _step in track(range(5), description="Проверка..."):
             sleep(0.2)
         console.print("[green]Валидация завершена (заглушка)")
         return
-    for step in track(range(10), description="Импорт..."):
+    for _step in track(range(10), description="Импорт..."):
         sleep(0.2)
     console.print("[green]Импорт завершён (заглушка)")
 
@@ -58,7 +58,7 @@ def hierarchy(file_path, parent_id, sheet_name, preview, dry_run):
     async def run_import():
         try:
             # Инициализация клиента
-            settings = NeosintezSettings()
+            settings = NeosintezConfig()
             async with NeosintezClient(settings) as client:
                 # Добавляем ресурсы к клиенту
                 client.classes = ClassesResource(client)
@@ -104,7 +104,7 @@ def hierarchy(file_path, parent_id, sheet_name, preview, dry_run):
 
                 objects_by_level = {}
                 for obj in preview_result.objects_to_create:
-                    level = obj['level']
+                    level = obj["level"]
                     if level not in objects_by_level:
                         objects_by_level[level] = []
                     objects_by_level[level].append(obj)
@@ -137,7 +137,7 @@ def hierarchy(file_path, parent_id, sheet_name, preview, dry_run):
                 # Выполняем импорт
                 console.print("[blue]Выполняем импорт...[/]")
 
-                with console.status("[bold green]Создание объектов...") as status:
+                with console.status("[bold green]Создание объектов..."):
                     result = await importer.import_from_excel(file_path, parent_id, sheet_name)
 
                 # Показываем результаты

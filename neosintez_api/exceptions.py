@@ -95,11 +95,3 @@ class NeosintezValidationError(ApiError):
     """Ошибка валидации данных для API Неосинтез."""
 
     pass
-
-
-class ModelValidationError(ApiError):
-    """
-    Ошибка валидации модели.
-    """
-
-    pass

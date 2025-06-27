@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from ..exceptions import ApiError
 from ..models import Attribute, EntityClass
+from ..services.cache import TTLCache
 from .base import BaseResource
 
 
@@ -19,33 +20,24 @@ class ClassesResource(BaseResource):
     Ресурсный класс для работы с классами "Классы объектов" в API Неосинтез.
     """
 
-    async def get_all(self, only_top_level: bool = False) -> List[EntityClass]:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # TTL кэш для атрибутов классов с автоматической инвалидацией (30 минут)
+        self._attr_cache = TTLCache[List[Attribute]](default_ttl=1800, max_size=200)
+
+    async def get(self, exclude_attributes: bool = False) -> list[dict[str, Any]]:
         """
         Получает список классов объектов из API.
 
         Args:
-            only_top_level: Если True, возвращает только классы верхнего уровня
+            exclude_attributes: Если True, возвращает классы без атрибутов и вьюэров (параметр only=true).
+                                 По умолчанию False, возвращает классы с атрибутами.
 
         Returns:
-            List[EntityClass]: Список моделей классов
+            list[dict[str, Any]]: Список словарей с данными классов.
         """
         endpoint = "api/structure/entities"
-        params = {"only": str(only_top_level).lower()}
-
-        result = await self._request("GET", endpoint, params=params)
-        if isinstance(result, list):
-            return [EntityClass.model_validate(item) for item in result]
-        return []
-
-    async def get_all_with_attributes(self) -> List[Dict[str, Any]]:
-        """
-        Получает список классов объектов вместе с их атрибутами.
-
-        Returns:
-            List[Dict[str, Any]]: Список классов с атрибутами
-        """
-        endpoint = "api/structure/entities"
-        params = {"only": "false"}  # Параметр, чтобы получить атрибуты вместе с классами
+        params = {"only": str(exclude_attributes).lower()}
 
         result = await self._request("GET", endpoint, params=params)
         if isinstance(result, list):
@@ -64,16 +56,19 @@ class ClassesResource(BaseResource):
         """
         try:
             # Получаем все классы
-            all_classes = await self.get_all()
+            all_classes = await self.get(exclude_attributes=True)
             logger.debug(f"Получено {len(all_classes)} классов для поиска '{name}'")
 
             # Фильтруем классы по имени (нечувствительно к регистру)
             name_lower = name.lower()
             matches = []
 
-            for cls in all_classes:
-                if name_lower in cls.Name.lower():
-                    matches.append({"id": str(cls.Id), "name": cls.Name})
+            for cls_data in all_classes:
+                # Используем .get() для безопасного доступа к ключу
+                class_name = cls_data.get("Name", "")
+                class_id = cls_data.get("Id")
+                if class_id and name_lower in class_name.lower():
+                    matches.append({"id": str(class_id), "name": class_name})
 
             logger.debug(f"Найдено {len(matches)} классов с именем, содержащим '{name}'")
             return matches
@@ -122,7 +117,7 @@ class ClassesResource(BaseResource):
 
     async def get_attributes(self, class_id: str) -> List[Attribute]:
         """
-        Получает список атрибутов для указанного класса объектов.
+        Получает список атрибутов для указанного класса объектов с кэшированием.
 
         Args:
             class_id: Идентификатор класса объектов
@@ -130,10 +125,29 @@ class ClassesResource(BaseResource):
         Returns:
             List[Attribute]: Список атрибутов класса
         """
+        class_id = str(class_id)
+        cached_attributes = self._attr_cache.get(class_id)
+        if cached_attributes is not None:
+            logger.debug(f"Атрибуты для класса {class_id} найдены в кэше.")
+            return cached_attributes
+
+        logger.debug(f"Получение атрибутов для класса {class_id} из API.")
+        attributes = await self._fetch_attributes(class_id)
+
+        self._attr_cache.set(class_id, attributes)
+        logger.debug(f"Атрибуты для класса {class_id} сохранены в кэш.")
+
+        return attributes
+
+    async def _fetch_attributes(self, class_id: str) -> List[Attribute]:
+        """
+        Получает список атрибутов для указанного класса объектов.
+        Вынесено для удобства кэширования.
+        """
         # Новая реализация: получаем все классы с атрибутами, затем фильтруем нужный
         try:
             # Сначала попробуем получить все классы с атрибутами
-            all_classes = await self.get_all_with_attributes()
+            all_classes = await self.get(exclude_attributes=False)
 
             # Найдем нужный класс по ID
             for class_data in all_classes:
@@ -229,3 +243,13 @@ class ClassesResource(BaseResource):
 
         # Возвращаем ID первого найденного класса
         return classes[0]["id"]
+
+    def invalidate_attributes_cache(self, class_id: str) -> None:
+        """Инвалидирует кэш атрибутов для указанного класса."""
+        self._attr_cache.remove(str(class_id))
+        logger.info(f"Кэш атрибутов для класса {class_id} инвалидирован.")
+
+    def clear_attributes_cache(self) -> None:
+        """Очищает весь кэш атрибутов."""
+        self._attr_cache.clear()
+        logger.info("Весь кэш атрибутов очищен.")

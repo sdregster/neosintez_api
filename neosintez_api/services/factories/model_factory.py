@@ -2,26 +2,34 @@
 Фабрика для динамического создания Pydantic-моделей на основе пользовательских данных.
 """
 
-from typing import Any, Dict, List, NamedTuple
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
-from neosintez_api.client import NeosintezClient
 from neosintez_api.utils import generate_field_name, neosintez_type_to_python_type
 
 
-class ObjectBlueprint(NamedTuple):
-    """Контейнер для разобранных данных, готовых к созданию объекта."""
+if TYPE_CHECKING:
+    from neosintez_api.core.client import NeosintezClient
 
+
+class ObjectBlueprint(NamedTuple):
+    """
+    Контейнер, описывающий Pydantic-модель объекта и его первоначальное состояние.
+    Эта структура отражает плоское представление объекта, удобное для работы в Python.
+    """
+
+    model_class: type[BaseModel]
+    model_instance: BaseModel
+    attributes_meta: Dict[str, Any]
+    class_id: str
     class_name: str
-    object_name: str
-    attributes_model: BaseModel
 
 
 class DynamicModelFactory:
     """
     "Строитель", который разбирает пользовательские данные ОДНОГО объекта
-    и создает динамическую Pydantic модель для его атрибутов.
+    и создает единую, плоскую Pydantic модель для его представления.
     """
 
     def __init__(self, name_aliases: List[str], class_name_aliases: List[str]):
@@ -35,8 +43,9 @@ class DynamicModelFactory:
                 return key, value
         return None, None
 
-    async def create_from_user_data(self, user_data: Dict[str, Any], client: NeosintezClient) -> ObjectBlueprint:
+    async def create_from_user_data(self, user_data: Dict[str, Any], client: "NeosintezClient") -> ObjectBlueprint:
         """Основной метод фабрики."""
+        # 1. Извлекаем стандартную информацию
         original_class_key, class_name = self._find_and_extract(user_data, self.class_name_aliases)
         if not class_name:
             raise ValueError(f"Не удалось найти имя класса по алиасам: {self.class_name_aliases}")
@@ -47,9 +56,11 @@ class DynamicModelFactory:
 
         print(f"Найден класс: '{class_name}', Имя объекта: '{object_name}'")
 
-        attribute_data = {k: v for k, v in user_data.items() if k != original_class_key and k != original_name_key}
+        # 2. Отделяем данные для атрибутов
+        attribute_data = {k: v for k, v in user_data.items() if k not in (original_class_key, original_name_key)}
         print(f"Найдены пользовательские атрибуты: {list(attribute_data.keys())}")
 
+        # 3. Получаем метаданные из API
         print("Запрашиваем все классы с атрибутами...")
         all_classes_meta = await client.classes.get(exclude_attributes=False)
 
@@ -60,12 +71,20 @@ class DynamicModelFactory:
         if not target_class_meta:
             raise ValueError(f"Класс '{class_name}' не найден в API.")
 
+        class_id = target_class_meta.get("Id")
+        if not class_id:
+            raise ValueError(f"Не удалось получить ID для класса '{class_name}'")
+
         api_attributes = target_class_meta.get("Attributes", {})
+        if not api_attributes:
+            print(f"Предупреждение: для класса '{class_name}' не найдено атрибутов в API.")
+
         attr_lookup = {
             attr_data.get("Name"): attr_data for _, attr_data in api_attributes.items() if isinstance(attr_data, dict)
         }
 
-        model_fields_meta = {}
+        # 4. Определяем поля для динамических атрибутов
+        dynamic_fields = {}
         for attr_name in attribute_data:
             meta = attr_lookup.get(attr_name)
             if not meta:
@@ -74,23 +93,45 @@ class DynamicModelFactory:
 
             field_name = generate_field_name(attr_name)
             python_type = neosintez_type_to_python_type(meta.get("Type"))
-            model_fields_meta[attr_name] = (field_name, python_type)
+            dynamic_fields[field_name] = (python_type, Field(..., alias=attr_name))
 
+        # 5. Определяем статические поля, которые есть у любого объекта
+        static_fields = {
+            "id": (Optional[str], Field(None, description="ID объекта в Неосинтезе")),
+            "class_id": (
+                Optional[str],
+                Field(None, description="ID класса объекта"),
+            ),
+            "parent_id": (
+                Optional[str],
+                Field(None, description="ID родительского объекта"),
+            ),
+            "name": (str, Field(..., description="Имя объекта")),
+        }
+
+        # 6. Создаем единую модель с "чистыми" именами полей и поддержкой алиасов
         sanitized_class_name = "".join(filter(str.isalnum, class_name))
-        model_name = f"{sanitized_class_name}AttributesModel"
+        UnifiedObjectModel = create_model(
+            f"{sanitized_class_name}ObjectModel",
+            **static_fields,
+            **dynamic_fields,
+            __config__=ConfigDict(populate_by_name=True),
+        )
+        print(f"Создана единая Pydantic-модель: '{UnifiedObjectModel.__name__}'")
 
-        if not model_fields_meta:
-            AttributesModel = create_model(model_name)
-            attributes_model_instance = AttributesModel()
-        else:
-            fields = {meta[0]: (meta[1], Field(..., alias=alias)) for alias, meta in model_fields_meta.items()}
-            AttributesModel = create_model(model_name, **fields, __config__=ConfigDict(validate_by_alias=True))
-            attributes_model_instance = AttributesModel.model_validate(attribute_data)
+        # 7. Готовим данные для создания экземпляра модели.
+        # Используем исходные данные атрибутов (с "грязными" именами), так как они являются алиасами.
+        validation_data = attribute_data.copy()
+        validation_data["name"] = object_name  # Добавляем имя объекта
 
-        print(f"Создана динамическая модель для атрибутов: '{AttributesModel.__name__}'")
+        # 8. Создаем экземпляр через model_validate, который корректно работает с алиасами
+        model_instance = UnifiedObjectModel.model_validate(validation_data)
 
+        # 9. Возвращаем чертеж
         return ObjectBlueprint(
+            model_class=UnifiedObjectModel,
+            model_instance=model_instance,
+            attributes_meta=api_attributes,
+            class_id=class_id,
             class_name=class_name,
-            object_name=object_name,
-            attributes_model=attributes_model_instance,
         )

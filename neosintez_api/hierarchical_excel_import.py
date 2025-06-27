@@ -164,7 +164,7 @@ class HierarchicalExcelImporter:
 
         except Exception as e:
             logger.error(f"Ошибка при анализе Excel файла: {e}")
-            raise ApiError(f"Ошибка при анализе Excel файла: {e}")
+            raise ApiError(f"Ошибка при анализе Excel файла: {e}") from e
 
     async def preview_import(
         self, excel_path: str, parent_id: str, worksheet_name: Optional[str] = None
@@ -256,7 +256,10 @@ class HierarchicalExcelImporter:
 
                     # Создаем объект
                     object_id = await self._create_object_with_attributes(
-                        obj_data["name"], obj_data["class_name"], current_parent_id, obj_data["attributes"]
+                        name=obj_data["name"],
+                        class_name=obj_data["class_name"],
+                        parent_id=current_parent_id,
+                        attributes=obj_data["attributes"],
                     )
 
                     last_parent_at_level[level] = object_id
@@ -330,7 +333,10 @@ class HierarchicalExcelImporter:
         return None
 
     async def _load_objects_sequentially(
-        self, excel_path: str, structure: ExcelStructure, worksheet_name: Optional[str] = None
+        self,
+        excel_path: str,
+        structure: ExcelStructure,
+        worksheet_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Загружает объекты из Excel в виде последовательного списка, сохраняя порядок."""
 
@@ -511,7 +517,7 @@ class HierarchicalExcelImporter:
 
             if attr_type_enum == WioAttributeType.OBJECT_LINK:
                 return str(value)
-            
+
             # Обработка булева типа из старого кода (Type 4)
             if attr_type == 4:
                 if isinstance(value, bool):
@@ -519,8 +525,7 @@ class HierarchicalExcelImporter:
                 return str(value).lower() in ("true", "1", "да", "yes")
 
             logger.warning(
-                f"Неподдерживаемый тип атрибута {attr_type} для значения '{original_value}'. "
-                f"Используется как есть."
+                f"Неподдерживаемый тип атрибута {attr_type} для значения '{original_value}'. Используется как есть."
             )
             return original_value
 

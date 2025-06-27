@@ -347,13 +347,21 @@ def convert_value_to_wio_format(value: Any, wio_type: WioAttributeType) -> Any:
 
             return value
 
-        # Для остальных типов просто возвращаем значение как есть
-        return value
+        # Пробуем преобразовать в дату/время
+        if wio_type == WioAttributeType.DATETIME:
+            return str(value.isoformat())
+        if wio_type == WioAttributeType.DATE:
+            return str(value.date())
+        if wio_type == WioAttributeType.TIME:
+            return str(value.time())
 
     except (ValueError, TypeError) as e:
         raise NeosintezValidationError(
             f"Не удалось преобразовать значение '{value}' в тип '{wio_type.as_string}': {e!s}"
-        )
+        ) from e
+
+    # Для всех остальных типов возвращаем значение как есть
+    return value
 
 
 def format_attribute_value(attr_meta: Dict[str, Any], value: Any) -> Any:

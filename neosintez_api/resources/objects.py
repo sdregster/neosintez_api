@@ -238,21 +238,21 @@ class ObjectsResource(BaseResource):
         for chunk in id_chunks:
             semaphore = asyncio.Semaphore(chunk_size)
 
-            async def get_path_with_semaphore(item_id):
-                async with semaphore:
+            async def get_path_with_semaphore(item_id, sem):
+                async with sem:
                     try:
                         path = await self.get_path(item_id)
                         return str(item_id), path.AncestorsOrSelf
                     except Exception:
                         return str(item_id), None
 
-            tasks = [get_path_with_semaphore(item_id) for item_id in chunk]
+            tasks = [get_path_with_semaphore(item_id, semaphore) for item_id in chunk]
             chunk_results = await asyncio.gather(*tasks)
 
             # Сохраняем результаты этого блока
-            for item_id, ancestors in chunk_results:
-                if ancestors is not None:
-                    result[str(item_id)] = ancestors
+            for item_id_str, path_data in chunk_results:
+                if path_data is not None:
+                    result[item_id_str] = path_data
 
         return result
 

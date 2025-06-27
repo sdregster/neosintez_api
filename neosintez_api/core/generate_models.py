@@ -84,7 +84,7 @@ def read_swagger(swagger_path: str) -> Dict[str, Any]:
         with open(swagger_path, encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        raise ValueError(f"Ошибка при чтении файла Swagger: {e}")
+        raise ValueError(f"Ошибка при чтении файла Swagger: {e}") from e
 
 
 def get_python_type(schema_type: str, schema_format: Optional[str] = None) -> str:
@@ -140,22 +140,22 @@ def analyze_schema_dependencies(schemas: Dict[str, Any]) -> Dict[str, Set[str]]:
     """
     dependencies: Dict[str, Set[str]] = {}
 
-    for name, schema in schemas.items():
-        dependencies[name] = set()
+    for schema_name, schema in schemas.items():
+        dependencies[schema_name] = set()
 
-        def find_refs(obj):
+        def find_refs(obj, current_schema_name):
             if isinstance(obj, dict):
                 if "$ref" in obj and obj["$ref"].startswith("#/components/schemas/"):
                     ref_name = obj["$ref"].split("/")[-1]
-                    if ref_name != name:  # Исключаем самоссылки
-                        dependencies[name].add(ref_name)
+                    if ref_name != current_schema_name:  # Исключаем самоссылки
+                        dependencies[current_schema_name].add(ref_name)
                 for value in obj.values():
-                    find_refs(value)
+                    find_refs(value, current_schema_name)
             elif isinstance(obj, list):
                 for item in obj:
-                    find_refs(item)
+                    find_refs(item, current_schema_name)
 
-        find_refs(schema)
+        find_refs(schema, schema_name)
 
     return dependencies
 
@@ -270,9 +270,14 @@ def generate_field_definition(
         field_options.append(f'pattern=r"{pattern}"')
     if "enum" in field_schema:
         enum_values = field_schema["enum"]
-        enum_vals_str = ", ".join(f'"{v}"' if isinstance(v, str) else str(v) for v in enum_values)
+        enum_vals_str = ", ".join(f'"{v}"' for v in enum_values)
+        field_options.append(f"description={repr(field_description)}")
         validators.append(
-            f'@field_validator("{name}")\n    @classmethod\n    def validate_{snake_case(name)}(cls, v):\n        if v is not None and v not in [{enum_vals_str}]:\n            raise ValueError(f"{{v}} не является допустимым значением")\n        return v'
+            f'    @field_validator("{snake_case(name)}")\n'
+            f"    def check_{snake_case(name)}_enum(cls, v):\n"
+            f"        if v is not None and v not in [{enum_vals_str}]:\n"
+            f'            raise ValueError(f"{{v}} не является допустимым значением")\n'
+            f"        return v"
         )
         imports.append("field_validator")
 

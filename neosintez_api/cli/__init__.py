@@ -1,5 +1,4 @@
 import click
-from rich.console import Console
 
 from .commands.class_ import class_
 from .commands.import_excel import import_ as import_excel

@@ -3,8 +3,8 @@ import asyncio
 import click
 from rich.console import Console
 
-from neosintez_api.config import NeosintezSettings
-from neosintez_api.core import NeosintezClient
+from neosintez_api.config import NeosintezConfig
+from neosintez_api.core.client import NeosintezClient
 from neosintez_api.exceptions import ApiError
 from neosintez_api.models import EquipmentModel
 from neosintez_api.services import ObjectService
@@ -28,7 +28,7 @@ def get(object_id):
 
     async def _get():
         try:
-            settings = NeosintezSettings()
+            settings = NeosintezConfig()
             async with NeosintezClient(settings) as client:
                 service = ObjectService(client)
                 model = await service.read(object_id, EquipmentModel)
@@ -43,37 +43,14 @@ def get(object_id):
 
 
 @object.command()
-@click.option("--class", "class_name", required=True, help="Класс объекта")
 @click.option("--name", required=True, help="Имя объекта")
-@click.option("--parent", "parent_id", required=False, help="ID родителя")
-@click.option("--dry-run", is_flag=True, help="Показать данные, не создавать объект")
-def create(class_name, name, parent_id, dry_run):
-    """
-    Создать новый объект.
-    """
+@click.option("--class-id", required=True, help="ID класса")
+@click.option("--parent-id", help="ID родительского объекта")
+def create(name, class_id, parent_id):
+    """Создать новый объект."""
     console = Console()
-
-    async def _create():
-        try:
-            # Пример: EquipmentModel, в реальности — динамически по class_name
-            model = EquipmentModel(
-                name=name, model="Модель", serial_number="123", installation_date="2024-01-01", is_active=True
-            )
-            if dry_run:
-                console.print("[yellow]Режим dry-run. Объект не будет создан.[/]")
-                console.print(model)
-                return
-            settings = NeosintezSettings()
-            async with NeosintezClient(settings) as client:
-                service = ObjectService(client)
-                object_id = await service.create(model, parent_id)
-                console.print(f"[bold green]Объект создан. ID:[/] {object_id}")
-        except ApiError as e:
-            console.print(f"[bold red]Ошибка API:[/] {e}")
-        except Exception as e:
-            console.print(f"[bold red]Неизвестная ошибка:[/] {e}")
-
-    asyncio.run(_create())
+    # Здесь должна быть логика создания объекта
+    console.print(f"Создание объекта '{name}' в классе '{class_id}'...")
 
 
 @object.command()
@@ -90,7 +67,7 @@ def update(object_id, attr, dry_run):
         try:
             # Пример: обновление только поля model
             attrs = dict(a.split("=", 1) for a in attr)
-            settings = NeosintezSettings()
+            settings = NeosintezConfig()
             async with NeosintezClient(settings) as client:
                 service = ObjectService(client)
                 # Получаем текущий объект
@@ -130,7 +107,7 @@ def delete(object_id, dry_run):
             if dry_run:
                 console.print(f"[yellow]Режим dry-run. Объект не будет удалён:[/] {object_id}")
                 return
-            settings = NeosintezSettings()
+            settings = NeosintezConfig()
             async with NeosintezClient(settings) as client:
                 # В ObjectService нет delete, используем client напрямую
                 await client.delete(f"objects/{object_id}")
