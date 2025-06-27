@@ -82,14 +82,11 @@ async def retry_async(
             last_exception = e
             if attempt < attempts:
                 logger.warning(
-                    f"Попытка {attempt} из {attempts} не удалась. "
-                    f"Ошибка: {e!s}. Повтор через {delay} сек..."
+                    f"Попытка {attempt} из {attempts} не удалась. Ошибка: {e!s}. Повтор через {delay} сек..."
                 )
                 await asyncio.sleep(delay)
             else:
-                logger.error(
-                    f"Все {attempts} попыток не удались. Последняя ошибка: {e!s}"
-                )
+                logger.error(f"Все {attempts} попыток не удались. Последняя ошибка: {e!s}")
                 raise
         except Exception as e:
             logger.error(f"Неожиданная ошибка: {e!s}")
@@ -154,9 +151,7 @@ def normalize_dict_keys(data: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(value, dict):
             result[camel_key] = normalize_dict_keys(value)
         elif isinstance(value, list):
-            result[camel_key] = [
-                normalize_dict_keys(i) if isinstance(i, dict) else i for i in value
-            ]
+            result[camel_key] = [normalize_dict_keys(i) if isinstance(i, dict) else i for i in value]
         else:
             result[camel_key] = value
 
@@ -273,9 +268,7 @@ def get_wio_attribute_type(python_type: type) -> WioAttributeType:
         return PYTHON_TO_WIO_TYPE_MAPPING[python_type]
 
     # Тип не поддерживается
-    raise NeosintezValidationError(
-        f"Тип Python '{python_type}' не поддерживается для атрибутов Неосинтеза"
-    )
+    raise NeosintezValidationError(f"Тип Python '{python_type}' не поддерживается для атрибутов Неосинтеза")
 
 
 def convert_value_to_wio_format(value: Any, wio_type: WioAttributeType) -> Any:
@@ -376,11 +369,7 @@ def format_attribute_value(attr_meta: Dict[str, Any], value: Any) -> Any:
         return None
 
     # Получаем тип атрибута
-    attr_type = (
-        attr_meta.get("Type")
-        if isinstance(attr_meta, dict)
-        else getattr(attr_meta, "Type", None)
-    )
+    attr_type = attr_meta.get("Type") if isinstance(attr_meta, dict) else getattr(attr_meta, "Type", None)
 
     if attr_type is None:
         return value  # Если не удалось определить тип, возвращаем как есть
@@ -446,18 +435,12 @@ def build_attribute_body(
     attr_id = str(attr_id)
 
     # Получаем тип атрибута из метаданных (это приоритет)
-    api_attr_type = (
-        attr_meta.get("Type")
-        if isinstance(attr_meta, dict)
-        else getattr(attr_meta, "Type", None)
-    )
+    api_attr_type = attr_meta.get("Type") if isinstance(attr_meta, dict) else getattr(attr_meta, "Type", None)
 
     # Если тип не указан в метаданных, определяем его по значению
     if api_attr_type is None:
         if attr_type:
-            api_attr_type = (
-                attr_type.value if hasattr(attr_type, "value") else attr_type
-            )
+            api_attr_type = attr_type.value if hasattr(attr_type, "value") else attr_type
         else:
             # Простая логика определения типа по значению
             if isinstance(value, int):

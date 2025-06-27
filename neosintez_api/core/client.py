@@ -99,8 +99,7 @@ class NeosintezClient:
         """
         if self._session is None or self._session.closed:
             raise RuntimeError(
-                "HTTP сессия не инициализирована. "
-                "Используйте 'async with' контекст или вызовите await client.auth()"
+                "HTTP сессия не инициализирована. Используйте 'async with' контекст или вызовите await client.auth()"
             )
         return self._session
 
@@ -136,9 +135,7 @@ class NeosintezClient:
 
         try:
             # Используем self.session напрямую
-            logger.debug(
-                f"Отправка запроса на авторизацию на URL: {self.settings.base_url}{url}"
-            )
+            logger.debug(f"Отправка запроса на авторизацию на URL: {self.settings.base_url}{url}")
             async with self.session.post(url, data=data, headers=headers) as response:
                 logger.debug(f"Получен ответ с кодом: {response.status}")
                 logger.debug(f"Заголовки ответа: {response.headers}")
@@ -156,17 +153,11 @@ class NeosintezClient:
                     except (json.JSONDecodeError, KeyError) as e:
                         logger.error(f"Ошибка при парсинге ответа: {e!s}")
                         logger.error(f"Текст ответа: {response_text[:200]}...")
-                        raise NeosintezAuthError(
-                            f"Ошибка при парсинге ответа: {e!s}"
-                        )
+                        raise NeosintezAuthError(f"Ошибка при парсинге ответа: {e!s}")
                 else:
                     response_text = await response.text()
-                    logger.error(
-                        f"Ошибка аутентификации: {response.status} - {response_text}"
-                    )
-                    raise NeosintezAuthError(
-                        f"Не удалось авторизоваться. {response.status} - {response_text}"
-                    )
+                    logger.error(f"Ошибка аутентификации: {response.status} - {response_text}")
+                    raise NeosintezAuthError(f"Не удалось авторизоваться. {response.status} - {response_text}")
         except aiohttp.ClientConnectionError as e:
             logger.error(f"Ошибка соединения при аутентификации: {e!s}")
             raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")
@@ -244,17 +235,13 @@ class NeosintezClient:
             data = data.model_dump(exclude_none=True)
 
         # Преобразуем данные в JSON, если они не None, используя кастомный энкодер
-        json_data = (
-            json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
-        )
+        json_data = json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
 
         logger.debug(f"Запрос {method} {self.settings.base_url}{endpoint}")
         if params:
             logger.debug(f"Параметры запроса: {params}")
         if data:
-            logger.debug(
-                f"Данные запроса: {json_data[:200]}..." if json_data else "None"
-            )
+            logger.debug(f"Данные запроса: {json_data[:200]}..." if json_data else "None")
 
         try:
             async with self.session.request(
@@ -276,10 +263,7 @@ class NeosintezClient:
                         # Если указана модель ответа, то валидируем JSON
                         if response_model:
                             if isinstance(response_json, list):
-                                return [
-                                    response_model.model_validate(item)
-                                    for item in response_json
-                                ]
+                                return [response_model.model_validate(item) for item in response_json]
                             else:
                                 return response_model.model_validate(response_json)
 
@@ -288,9 +272,7 @@ class NeosintezClient:
                     except json.JSONDecodeError:
                         # Если ответ не JSON, то возвращаем текст ответа
                         text_response = await response.text()
-                        logger.debug(
-                            f"Ответ не является JSON: {text_response[:200]}..."
-                        )
+                        logger.debug(f"Ответ не является JSON: {text_response[:200]}...")
                         return text_response
 
                 # Обрабатываем ошибочный ответ
@@ -306,9 +288,7 @@ class NeosintezClient:
             raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")
         except aiohttp.ClientResponseError as e:
             logger.error(f"Ошибка ответа: {e!s}")
-            raise NeosintezAPIError(
-                status_code=e.status, message=str(e), response_data=None
-            )
+            raise NeosintezAPIError(status_code=e.status, message=str(e), response_data=None)
         except aiohttp.ClientError as e:
             logger.error(f"Ошибка клиента: {e!s}")
             raise NeosintezAPIError(status_code=500, message=str(e), response_data=None)
@@ -361,9 +341,7 @@ class NeosintezClient:
             data = data.model_dump(exclude_none=True)
 
         # Преобразуем данные в JSON, если они не None, используя кастомный энкодер
-        json_data = (
-            json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
-        )
+        json_data = json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
 
         try:
             async with self.session.request(

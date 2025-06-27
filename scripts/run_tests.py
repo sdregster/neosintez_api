@@ -33,9 +33,7 @@ def main():
         help="Тип тестов для запуска",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Подробный вывод")
-    parser.add_argument(
-        "--fail-fast", "-x", action="store_true", help="Остановиться при первой ошибке"
-    )
+    parser.add_argument("--fail-fast", "-x", action="store_true", help="Остановиться при первой ошибке")
 
     args = parser.parse_args()
 

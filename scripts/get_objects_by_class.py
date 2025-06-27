@@ -213,9 +213,7 @@ async def save_objects_info_to_file(
 
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
-        logger.info(
-            f"Информация об объектах класса '{class_info.Name}' сохранена в {output_file}"
-        )
+        logger.info(f"Информация об объектах класса '{class_info.Name}' сохранена в {output_file}")
 
         return True
     except Exception as e:
@@ -229,9 +227,7 @@ async def main():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Получение объектов по классу и их атрибутов"
-    )
+    parser = argparse.ArgumentParser(description="Получение объектов по классу и их атрибутов")
     parser.add_argument("--id", type=str, required=True, help="ID класса")
     parser.add_argument(
         "--limit",

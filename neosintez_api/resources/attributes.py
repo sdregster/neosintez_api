@@ -101,8 +101,7 @@ class AttributesResource(BaseResource):
             bool: True, если обновление успешно
         """
         self._logger.warning(
-            "Метод update_values устарел и может работать некорректно. "
-            "Используйте вместо него метод set_attributes."
+            "Метод update_values устарел и может работать некорректно. Используйте вместо него метод set_attributes."
         )
         endpoint = f"api/objects/{object_id}/attributes"
 
@@ -149,14 +148,10 @@ class AttributesResource(BaseResource):
             self._logger.info(f"Атрибуты объекта {object_id} успешно обновлены")
             return True
         except Exception as e:
-            self._logger.error(
-                f"Ошибка при установке атрибутов объекта {object_id}: {e!s}"
-            )
+            self._logger.error(f"Ошибка при установке атрибутов объекта {object_id}: {e!s}")
             return False
 
-    async def get_value(
-        self, object_id: Union[str, UUID], attribute_id: Union[str, UUID]
-    ) -> Optional[Any]:
+    async def get_value(self, object_id: Union[str, UUID], attribute_id: Union[str, UUID]) -> Optional[Any]:
         """
         Получает значение атрибута для указанного объекта.
 
@@ -174,9 +169,6 @@ class AttributesResource(BaseResource):
             if isinstance(result, dict) and "Value" in result:
                 return result["Value"]
         except Exception as e:
-            self._logger.error(
-                f"Ошибка при получении значения атрибута {attribute_id} "
-                f"для объекта {object_id}: {e!s}"
-            )
+            self._logger.error(f"Ошибка при получении значения атрибута {attribute_id} для объекта {object_id}: {e!s}")
 
         return None

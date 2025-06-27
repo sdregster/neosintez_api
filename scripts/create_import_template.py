@@ -59,9 +59,7 @@ def load_classes_info() -> Dict[str, Any]:
         return {"classes": []}
 
 
-def create_template(
-    classes_info: Dict[str, Any], output_file: str = "nested_import_template.xlsx"
-) -> str:
+def create_template(classes_info: Dict[str, Any], output_file: str = "nested_import_template.xlsx") -> str:
     """
     Создает Excel шаблон на основе информации о классах и их атрибутах.
 
@@ -174,12 +172,8 @@ def main():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Создание Excel шаблона для импорта вложенных объектов"
-    )
-    parser.add_argument(
-        "--output", default="nested_import_template.xlsx", help="Имя выходного файла"
-    )
+    parser = argparse.ArgumentParser(description="Создание Excel шаблона для импорта вложенных объектов")
+    parser.add_argument("--output", default="nested_import_template.xlsx", help="Имя выходного файла")
     args = parser.parse_args()
 
     # Загружаем информацию о классах

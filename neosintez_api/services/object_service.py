@@ -41,10 +41,7 @@ class ObjectService(Generic[T]):
         self.client = client
         self.mapper = ObjectMapper()
         # TTL кэш для атрибутов классов с автоматической инвалидацией
-        self._attr_cache = TTLCache[Dict[str, str]](
-            default_ttl=metadata_cache_ttl,
-            max_size=metadata_cache_max_size
-        )
+        self._attr_cache = TTLCache[Dict[str, str]](default_ttl=metadata_cache_ttl, max_size=metadata_cache_max_size)
 
     async def _get_class_attributes_mapping(self, class_id: str) -> Dict[str, str]:
         """
@@ -79,15 +76,11 @@ class ObjectService(Generic[T]):
                 "626370d8-ad8f-ec11-911d-005056b6948b": "МВЗ",
                 "f980619f-b547-ee11-917e-005056b6948b": "ID стройки Адепт",
             }
-            logger.debug(
-                f"Использован хардкод-маппинг для класса Стройка: {len(attr_mapping)} атрибутов"
-            )
+            logger.debug(f"Использован хардкод-маппинг для класса Стройка: {len(attr_mapping)} атрибутов")
         else:
             # Для других классов пока возвращаем пустой маппинг
             attr_mapping = {}
-            logger.warning(
-                f"Маппинг атрибутов для класса '{class_id}' не реализован"
-            )
+            logger.warning(f"Маппинг атрибутов для класса '{class_id}' не реализован")
 
         # Сохраняем в TTL кэш
         self._attr_cache.set(class_id, attr_mapping)
@@ -140,9 +133,7 @@ class ObjectService(Generic[T]):
                 try:
                     object_name = model.name
                 except AttributeError:
-                    raise ModelValidationError(
-                        "Модель должна иметь атрибут name или Name"
-                    ) from None
+                    raise ModelValidationError("Модель должна иметь атрибут name или Name") from None
 
             # 3) Находим класс по имени
             class_id = await self.client.classes.find_by_name(class_name)
@@ -172,16 +163,12 @@ class ObjectService(Generic[T]):
 
             # 6) Подготавливаем метаданные атрибутов по имени
             attr_meta_by_name = {
-                (a["Name"] if isinstance(a, dict) else a.Name): (
-                    a if isinstance(a, dict) else a.model_dump()
-                )
+                (a["Name"] if isinstance(a, dict) else a.Name): (a if isinstance(a, dict) else a.model_dump())
                 for a in class_attributes
             }
 
             # 7) Преобразуем модель в атрибуты
-            attributes_list = await self.mapper.model_to_attributes(
-                model, attr_meta_by_name
-            )
+            attributes_list = await self.mapper.model_to_attributes(model, attr_meta_by_name)
 
             # 8) Устанавливаем атрибуты отдельным вызовом, если они есть
             if attributes_list:
@@ -216,9 +203,7 @@ class ObjectService(Generic[T]):
             attr_id_to_name = await self._get_class_attributes_mapping(class_id)
 
             # 3) Инициализируем данные модели с именем объекта
-            model_data = {
-                "Name": object_data.Name if hasattr(object_data, "Name") else ""
-            }
+            model_data = {"Name": object_data.Name if hasattr(object_data, "Name") else ""}
 
             # 4) Извлекаем атрибуты объекта
             object_attributes = []
@@ -227,9 +212,7 @@ class ObjectService(Generic[T]):
                     if isinstance(attr_data, dict):
                         # Добавляем имя атрибута из маппинга
                         attr_data_with_name = attr_data.copy()
-                        attr_data_with_name["Name"] = attr_id_to_name.get(
-                            str(attr_id), f"Unknown_{attr_id}"
-                        )
+                        attr_data_with_name["Name"] = attr_id_to_name.get(str(attr_id), f"Unknown_{attr_id}")
                         object_attributes.append(attr_data_with_name)
                     else:
                         # Если атрибут не словарь, создаем минимальную структуру
@@ -237,9 +220,7 @@ class ObjectService(Generic[T]):
                             {
                                 "Id": attr_id,
                                 "Value": attr_data,
-                                "Name": attr_id_to_name.get(
-                                    str(attr_id), f"Unknown_{attr_id}"
-                                ),
+                                "Name": attr_id_to_name.get(str(attr_id), f"Unknown_{attr_id}"),
                             }
                         )
 
@@ -275,9 +256,7 @@ class ObjectService(Generic[T]):
                         field_name = alias_to_field[attr_name]
                         model_data[field_name] = attr_value
                         if logger.isEnabledFor(logging.DEBUG):
-                            logger.debug(
-                                f"Установлено поле {field_name}={attr_value} (алиас: {attr_name})"
-                            )
+                            logger.debug(f"Установлено поле {field_name}={attr_value} (алиас: {attr_name})")
 
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Данные для модели: {model_data}")
@@ -323,9 +302,7 @@ class ObjectService(Generic[T]):
             attr_id_to_name = await self._get_class_attributes_mapping(str(class_id))
 
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"Получен маппинг атрибутов: {len(attr_id_to_name)} атрибутов"
-                )
+                logger.debug(f"Получен маппинг атрибутов: {len(attr_id_to_name)} атрибутов")
 
             # 3) Получить текущие значения атрибутов (по ID, не по Name!)
             current_attrs_by_id = {}
@@ -377,23 +354,15 @@ class ObjectService(Generic[T]):
                     if isinstance(new_value, (int, float)):
                         attr_type = 1  # Число
 
-                    changed_attrs.append(
-                        {"Id": attr_id, "Value": new_value, "Type": attr_type}
-                    )
+                    changed_attrs.append({"Id": attr_id, "Value": new_value, "Type": attr_type})
 
                     if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(
-                            f"Изменен атрибут {alias} (ID: {attr_id}): {current_value} -> {new_value}"
-                        )
+                        logger.debug(f"Изменен атрибут {alias} (ID: {attr_id}): {current_value} -> {new_value}")
 
             # 6) Обновить изменившиеся атрибуты
             if changed_attrs:
-                logger.info(
-                    f"Обновление {len(changed_attrs)} атрибутов объекта {object_id}"
-                )
-                return await self.client.objects.set_attributes(
-                    object_id, changed_attrs
-                )
+                logger.info(f"Обновление {len(changed_attrs)} атрибутов объекта {object_id}")
+                return await self.client.objects.set_attributes(object_id, changed_attrs)
 
             logger.info("Нет изменившихся атрибутов для обновления")
             return True
@@ -418,9 +387,7 @@ class ObjectService(Generic[T]):
         """
         return format_attribute_value(attr_meta, value)
 
-    async def _set_attributes(
-        self, object_id: str, attributes: List[Dict[str, Any]]
-    ) -> bool:
+    async def _set_attributes(self, object_id: str, attributes: List[Dict[str, Any]]) -> bool:
         """
         Устанавливает атрибуты объекта.
 
@@ -436,9 +403,7 @@ class ObjectService(Generic[T]):
         """
         try:
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"Устанавливаем {len(attributes)} атрибутов для объекта {object_id}"
-                )
+                logger.debug(f"Устанавливаем {len(attributes)} атрибутов для объекта {object_id}")
 
             # Вывод атрибутов для отладки
             for i, attr in enumerate(attributes):

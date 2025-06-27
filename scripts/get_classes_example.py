@@ -90,9 +90,7 @@ async def get_classes() -> List[EntityClass]:
                         found_classes.append(entity)
 
             # Выводим найденные классы
-            logger.info(
-                f"Найдено {len(found_classes)} классов по запросу {search_terms}:"
-            )
+            logger.info(f"Найдено {len(found_classes)} классов по запросу {search_terms}:")
             for entity in found_classes:
                 logger.info(f"  {entity.Name} (ID: {entity.Id})")
 

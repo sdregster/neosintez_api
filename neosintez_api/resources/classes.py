@@ -45,9 +45,7 @@ class ClassesResource(BaseResource):
             List[Dict[str, Any]]: Список классов с атрибутами
         """
         endpoint = "api/structure/entities"
-        params = {
-            "only": "false"
-        }  # Параметр, чтобы получить атрибуты вместе с классами
+        params = {"only": "false"}  # Параметр, чтобы получить атрибуты вместе с классами
 
         result = await self._request("GET", endpoint, params=params)
         if isinstance(result, list):
@@ -77,9 +75,7 @@ class ClassesResource(BaseResource):
                 if name_lower in cls.Name.lower():
                     matches.append({"id": str(cls.Id), "name": cls.Name})
 
-            logger.debug(
-                f"Найдено {len(matches)} классов с именем, содержащим '{name}'"
-            )
+            logger.debug(f"Найдено {len(matches)} классов с именем, содержащим '{name}'")
             return matches
 
         except Exception as e:
@@ -167,13 +163,9 @@ class ClassesResource(BaseResource):
                                 # Создаем объект атрибута
                                 attributes.append(Attribute.model_validate(attr_dict))
                             except Exception as e:
-                                logger.error(
-                                    f"Ошибка при обработке атрибута {attr_id}: {e!s}"
-                                )
+                                logger.error(f"Ошибка при обработке атрибута {attr_id}: {e!s}")
                                 # Добавляем минимальную информацию об атрибуте
-                                attributes.append(
-                                    Attribute(Id=attr_id, Name=f"Attribute {attr_id}")
-                                )
+                                attributes.append(Attribute(Id=attr_id, Name=f"Attribute {attr_id}"))
 
                     return attributes
 
@@ -185,9 +177,7 @@ class ClassesResource(BaseResource):
             # Пробуем получить атрибуты через общий эндпоинт как запасной вариант
             return await self._get_attributes_from_common_endpoint(class_id)
 
-    async def _get_attributes_from_common_endpoint(
-        self, class_id: str
-    ) -> List[Attribute]:
+    async def _get_attributes_from_common_endpoint(self, class_id: str) -> List[Attribute]:
         """
         Получает атрибуты класса через общий эндпоинт атрибутов.
 
@@ -212,16 +202,12 @@ class ClassesResource(BaseResource):
                         if attr.get("EntityId") and str(attr["EntityId"]) == class_id:
                             class_attributes.append(Attribute.model_validate(attr))
                     except Exception as e:
-                        logger.error(
-                            f"Ошибка при обработке атрибута через общий эндпоинт: {e!s}"
-                        )
+                        logger.error(f"Ошибка при обработке атрибута через общий эндпоинт: {e!s}")
 
                 return class_attributes
             return []
         except Exception as e:
-            logger.error(
-                f"Ошибка при получении атрибутов через общий эндпоинт для класса {class_id}: {e!s}"
-            )
+            logger.error(f"Ошибка при получении атрибутов через общий эндпоинт для класса {class_id}: {e!s}")
             return []
 
     async def find_by_name(self, class_name: str) -> str:

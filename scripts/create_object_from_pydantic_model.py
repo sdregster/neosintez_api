@@ -28,9 +28,7 @@ class SomeRandomModel(BaseModel):
     __class_name__ = "Папка МВЗ"
 
     Name: str
-    МВЗ: str = Field(
-        alias="МВЗ"
-    )  # alias оставляем «как есть», чтобы не терялась кириллица
+    МВЗ: str = Field(alias="МВЗ")  # alias оставляем «как есть», чтобы не терялась кириллица
 
 
 # ────────────────────────────
@@ -74,9 +72,7 @@ async def get_entity_meta(client: NeosintezClient, class_name: str) -> Dict[str,
                 break
 
         if not target_class:
-            logger.warning(
-                f"Класс '{class_name}' не найден в списке классов с атрибутами"
-            )
+            logger.warning(f"Класс '{class_name}' не найден в списке классов с атрибутами")
             # Пробуем стандартный метод
             logger.info("Пробуем получить классы стандартным методом...")
             classes = await client.classes.get_all()
@@ -90,17 +86,13 @@ async def get_entity_meta(client: NeosintezClient, class_name: str) -> Dict[str,
                     break
 
             if not target_class:
-                raise ValueError(
-                    f"Класс '{class_name}' не найден в списке классов API Neosintez"
-                )
+                raise ValueError(f"Класс '{class_name}' не найден в списке классов API Neosintez")
 
             logger.info(f"Найден класс '{class_name}' (ID: {target_class['Id']})")
 
             # Получаем атрибуты отдельно
             attributes = await client.classes.get_attributes(target_class["Id"])
-            logger.info(
-                f"Получено {len(attributes)} атрибутов для класса '{class_name}'"
-            )
+            logger.info(f"Получено {len(attributes)} атрибутов для класса '{class_name}'")
 
             if len(attributes) == 0:
                 logger.warning(f"Внимание: класс '{class_name}' не имеет атрибутов!")
@@ -108,9 +100,7 @@ async def get_entity_meta(client: NeosintezClient, class_name: str) -> Dict[str,
             # Собираем информацию в словарь
             target_class["Attributes"] = [attr.model_dump() for attr in attributes]
         else:
-            logger.info(
-                f"Найден класс '{class_name}' (ID: {target_class['Id']}) с атрибутами"
-            )
+            logger.info(f"Найден класс '{class_name}' (ID: {target_class['Id']}) с атрибутами")
 
             # Превращаем атрибуты из словаря {id: data} в список атрибутов для совместимости
             attributes_list = []
@@ -131,14 +121,10 @@ async def get_entity_meta(client: NeosintezClient, class_name: str) -> Dict[str,
                         # Добавляем в список атрибутов
                         attributes_list.append(attr_dict)
                     except Exception as e:
-                        logger.error(
-                            f"Ошибка при обработке атрибута {attr_id}: {e!s}"
-                        )
+                        logger.error(f"Ошибка при обработке атрибута {attr_id}: {e!s}")
 
             target_class["Attributes"] = attributes_list
-            logger.info(
-                f"Обработано {len(attributes_list)} атрибутов для класса '{class_name}'"
-            )
+            logger.info(f"Обработано {len(attributes_list)} атрибутов для класса '{class_name}'")
 
         # Сохраняем класс в кэше
         ENTITY_CACHE[class_name] = target_class
@@ -168,9 +154,7 @@ def build_attribute_body(attr_meta: Dict[str, Any], value: Any) -> Dict[str, Any
     try:
         return utils_build_attribute_body(attr_meta, value)
     except Exception as e:
-        logger.warning(
-            f"Ошибка при создании тела атрибута: {e!s}. Используем обычную версию."
-        )
+        logger.warning(f"Ошибка при создании тела атрибута: {e!s}. Используем обычную версию.")
 
         # Используем обычную версию функции как запасной вариант
         return {
@@ -213,15 +197,11 @@ async def create_object_from_model(
 
     # Маппинг «Название атрибута → метаданные»
     attr_by_name = {a["Name"]: a for a in entity["Attributes"]}
-    logger.debug(
-        f"Доступные атрибуты класса '{class_name}': {', '.join(attr_by_name.keys())}"
-    )
+    logger.debug(f"Доступные атрибуты класса '{class_name}': {', '.join(attr_by_name.keys())}")
 
     # Если атрибутов нет, выдаем предупреждение
     if not attr_by_name:
-        logger.warning(
-            f"Класс '{class_name}' не имеет атрибутов! Будет создан объект без атрибутов."
-        )
+        logger.warning(f"Класс '{class_name}' не имеет атрибутов! Будет создан объект без атрибутов.")
 
     # Получаем имя объекта из модели
     if not hasattr(model, "Name"):
@@ -265,9 +245,7 @@ async def create_object_from_model(
 
     # 4) Записываем атрибуты, если есть что писать
     if attributes_body:
-        logger.info(
-            f"Установка {len(attributes_body)} атрибутов для объекта {object_id}"
-        )
+        logger.info(f"Установка {len(attributes_body)} атрибутов для объекта {object_id}")
         success = await client.attributes.set_attributes(object_id, attributes_body)
         if not success:
             logger.error("Ошибка при установке атрибутов!")
@@ -277,9 +255,7 @@ async def create_object_from_model(
     created_obj = await client.objects.get_by_id(object_id)
 
     if created_obj.Name != object_name:
-        logger.warning(
-            f"Имя объекта '{created_obj.Name}' не совпадает с ожидаемым '{object_name}'"
-        )
+        logger.warning(f"Имя объекта '{created_obj.Name}' не совпадает с ожидаемым '{object_name}'")
 
     # Проверяем каждый атрибут
     all_verified = True
@@ -295,14 +271,9 @@ async def create_object_from_model(
                 attr_value = await client.attributes.get_value(object_id, attr_id)
 
                 if attr_value == field_value:
-                    logger.info(
-                        f"Атрибут {field_name} успешно установлен: {attr_value}"
-                    )
+                    logger.info(f"Атрибут {field_name} успешно установлен: {attr_value}")
                 else:
-                    logger.warning(
-                        f"Атрибут {field_name} имеет значение '{attr_value}', "
-                        f"ожидалось: '{field_value}'"
-                    )
+                    logger.warning(f"Атрибут {field_name} имеет значение '{attr_value}', ожидалось: '{field_value}'")
                     all_verified = False
             except Exception as e:
                 logger.error(f"Ошибка при проверке атрибута {field_name}: {e!s}")
@@ -341,9 +312,7 @@ async def main():
 
                 # Создаем модель объекта
                 instance = SomeRandomModel(Name="Тестовая МВЗ-папка", МВЗ="0001")
-                logger.info(
-                    f"Подготовлена модель {instance.__class_name__}: {instance.Name}"
-                )
+                logger.info(f"Подготовлена модель {instance.__class_name__}: {instance.Name}")
 
                 # Создаем объект
                 logger.info("Начинаем процесс создания объекта...")
@@ -353,9 +322,7 @@ async def main():
                 # Проверяем созданный объект
                 logger.info("Проверка созданного объекта...")
                 created_obj = await client.objects.get_by_id(object_id)
-                logger.info(
-                    f"Объект подтверждён: {created_obj.Name} (ID: {created_obj.Id})"
-                )
+                logger.info(f"Объект подтверждён: {created_obj.Name} (ID: {created_obj.Id})")
 
                 return object_id
 

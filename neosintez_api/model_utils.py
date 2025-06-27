@@ -75,9 +75,7 @@ def neosintez_model(cls=None, *, class_name=None):
                 if hasattr(field_info, "alias") and field_info.alias == "Name":
                     return getattr(self, field_name)
 
-            raise ValueError(
-                "Модель должна иметь поле с именем 'Name' или с alias='Name'"
-            )
+            raise ValueError("Модель должна иметь поле с именем 'Name' или с alias='Name'")
 
         # Добавляем методы в класс
         cls.get_attribute_data = get_attribute_data
@@ -128,9 +126,7 @@ def create_model_from_class_attributes(
         elif attr_type == 2:  # Вещественное число
             field_type = float
         elif attr_type == 3:  # Дата
-            field_type = (
-                str  # Можно использовать datetime, но для простоты оставим строку
-            )
+            field_type = str  # Можно использовать datetime, но для простоты оставим строку
         elif attr_type == 4:  # Булево
             field_type = bool
 
@@ -141,9 +137,7 @@ def create_model_from_class_attributes(
         )
 
     # Создаем модель
-    model = create_model(
-        f"{class_name.replace(' ', '')}Model", __base__=base_class, **fields
-    )
+    model = create_model(f"{class_name.replace(' ', '')}Model", __base__=base_class, **fields)
 
     # Добавляем имя класса
     model.__class_name__ = class_name

@@ -62,9 +62,7 @@ class TemplateAnalyzer:
         logger.info(f"Загрузка данных из файла {self.excel_path}")
         try:
             self.df = pd.read_excel(self.excel_path)
-            logger.info(
-                f"Загружено {len(self.df)} строк данных и {len(self.df.columns)} колонок"
-            )
+            logger.info(f"Загружено {len(self.df)} строк данных и {len(self.df.columns)} колонок")
             return self.df
         except Exception as e:
             logger.error(f"Ошибка при загрузке Excel файла: {e!s}")
@@ -176,9 +174,7 @@ class TemplateAnalyzer:
                 "null_count": int(null_count),
                 "unique_count": int(unique_count),
                 "dtype": col_type,
-                "fill_rate": float(non_null / len(self.df))
-                if len(self.df) > 0
-                else 0.0,
+                "fill_rate": float(non_null / len(self.df)) if len(self.df) > 0 else 0.0,
             }
 
             # Добавляем примеры значений, если есть непустые
@@ -268,22 +264,15 @@ class TemplateAnalyzer:
                 class_attributes = await self.client.classes.get_all_with_attributes()
                 for class_data in class_attributes:
                     if str(class_data.get("Id")) == str(entity_class.Id):
-                        logger.info(
-                            f"Найдены данные класса {class_data['Name']} в общем списке"
-                        )
+                        logger.info(f"Найдены данные класса {class_data['Name']} в общем списке")
                         if class_data.get("Attributes"):
                             logger.info(
                                 f"Структура атрибутов класса: {json.dumps(dict(list(class_data['Attributes'].items())[:2]), ensure_ascii=False)}"
                             )
 
                 # Получаем все атрибуты через общий эндпоинт
-                all_attributes_response = await self.client._request(
-                    "GET", "api/attributes"
-                )
-                if (
-                    isinstance(all_attributes_response, dict)
-                    and "Result" in all_attributes_response
-                ):
+                all_attributes_response = await self.client._request("GET", "api/attributes")
+                if isinstance(all_attributes_response, dict) and "Result" in all_attributes_response:
                     all_attributes = all_attributes_response["Result"]
                     # Пример первых двух атрибутов для понимания структуры
                     if all_attributes and len(all_attributes) > 1:
@@ -305,18 +294,13 @@ class TemplateAnalyzer:
                             "match_type": "partial",
                             "count": classes_info["counts"][class_name],
                         }
-                        logger.info(
-                            f"Для класса '{class_name}' найдено частичное совпадение: '{neosintez_class_name}'"
-                        )
+                        logger.info(f"Для класса '{class_name}' найдено частичное совпадение: '{neosintez_class_name}'")
 
                         # Загружаем атрибуты класса
-                        attributes = await self.load_class_attributes(
-                            str(entity_class.Id)
-                        )
+                        attributes = await self.load_class_attributes(str(entity_class.Id))
                         class_mappings[class_name]["attributes_count"] = len(attributes)
                         class_mappings[class_name]["attributes"] = [
-                            {"id": str(attr.Id), "name": attr.Name}
-                            for attr in attributes
+                            {"id": str(attr.Id), "name": attr.Name} for attr in attributes
                         ]
 
                         found = True
@@ -333,12 +317,8 @@ class TemplateAnalyzer:
 
         self.analyzed_structure["neosintez_mappings"] = {
             "class_mappings": class_mappings,
-            "mapped_count": sum(
-                1 for m in class_mappings.values() if m["match_type"] != "not_found"
-            ),
-            "unmapped_count": sum(
-                1 for m in class_mappings.values() if m["match_type"] == "not_found"
-            ),
+            "mapped_count": sum(1 for m in class_mappings.values() if m["match_type"] != "not_found"),
+            "unmapped_count": sum(1 for m in class_mappings.values() if m["match_type"] == "not_found"),
         }
 
         # Сопоставляем колонки с атрибутами классов
@@ -368,10 +348,7 @@ class TemplateAnalyzer:
                                 break
 
                             # Проверяем частичное совпадение
-                            if (
-                                attr["name"].lower() in column.lower()
-                                or column.lower() in attr["name"].lower()
-                            ):
+                            if attr["name"].lower() in column.lower() or column.lower() in attr["name"].lower():
                                 column_attribute_mappings[column] = {
                                     "class_name": class_name,
                                     "attribute_id": attr["id"],
@@ -412,9 +389,7 @@ class TemplateAnalyzer:
                 f,
                 ensure_ascii=False,
                 indent=2,
-                default=lambda o: str(o)
-                if not isinstance(o, (dict, list, str, int, float, bool, type(None)))
-                else o,
+                default=lambda o: str(o) if not isinstance(o, (dict, list, str, int, float, bool, type(None))) else o,
             )
 
         logger.info(f"Результаты анализа сохранены в {output_file}")
@@ -432,12 +407,8 @@ async def main():
         # Определяем параметры анализа
         import argparse
 
-        parser = argparse.ArgumentParser(
-            description="Анализ шаблона импорта для Neosintez"
-        )
-        parser.add_argument(
-            "--file", default="template.xlsx", help="Имя Excel файла в папке data"
-        )
+        parser = argparse.ArgumentParser(description="Анализ шаблона импорта для Neosintez")
+        parser.add_argument("--file", default="template.xlsx", help="Имя Excel файла в папке data")
         parser.add_argument(
             "--output",
             default="template_analysis.json",
@@ -481,39 +452,25 @@ async def main():
                 # Сохраняем результаты
                 await analyzer.save_analysis_results(output_file)
 
-                logger.info(
-                    f"Анализ успешно завершен. Результаты сохранены в {output_file}"
-                )
+                logger.info(f"Анализ успешно завершен. Результаты сохранены в {output_file}")
 
                 # Выводим краткую сводку
                 logger.info("Краткая сводка анализа:")
-                logger.info(
-                    f"- Строк в файле: {analysis_result['file_info']['rows_count']}"
-                )
-                logger.info(
-                    f"- Колонок в файле: {analysis_result['file_info']['columns_count']}"
-                )
-                logger.info(
-                    f"- Найдено классов: {analysis_result['classes']['total_count']}"
-                )
+                logger.info(f"- Строк в файле: {analysis_result['file_info']['rows_count']}")
+                logger.info(f"- Колонок в файле: {analysis_result['file_info']['columns_count']}")
+                logger.info(f"- Найдено классов: {analysis_result['classes']['total_count']}")
 
                 # Выводим информацию о сопоставлении классов
                 if "neosintez_mappings" in analysis_result:
                     mappings = analysis_result["neosintez_mappings"]
                     logger.info(f"- Сопоставлено {mappings['mapped_count']} классов")
-                    logger.info(
-                        f"- Не сопоставлено {mappings['unmapped_count']} классов"
-                    )
+                    logger.info(f"- Не сопоставлено {mappings['unmapped_count']} классов")
 
                 # Выводим информацию о сопоставлении атрибутов
                 if "attribute_mappings" in analysis_result:
                     attr_mappings = analysis_result["attribute_mappings"]
-                    logger.info(
-                        f"- Сопоставлено {attr_mappings['mapped_count']} колонок с атрибутами"
-                    )
-                    logger.info(
-                        f"- Не сопоставлено {attr_mappings['unmapped_count']} колонок"
-                    )
+                    logger.info(f"- Сопоставлено {attr_mappings['mapped_count']} колонок с атрибутами")
+                    logger.info(f"- Не сопоставлено {attr_mappings['unmapped_count']} колонок")
 
             except NeosintezAuthError as e:
                 logger.error(f"Ошибка аутентификации: {e!s}")

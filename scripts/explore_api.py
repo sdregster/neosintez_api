@@ -71,9 +71,7 @@ async def make_api_request(
 
             # Выполнение запроса
             logger.info(f"Выполнение запроса {method} {endpoint}")
-            status_code, response = await client._request_raw(
-                method, endpoint, params=params, data=data
-            )
+            status_code, response = await client._request_raw(method, endpoint, params=params, data=data)
 
             logger.info(f"Получен ответ с кодом: {status_code}")
             return status_code, response
@@ -123,9 +121,7 @@ async def explore_attributes_api() -> Dict[str, Any]:
             status, attr_detail = await make_api_request(f"api/attributes/{attr_id}")
             results["attribute_detail"] = {"status": status, "data": attr_detail}
 
-            with open(
-                output_dir / "attribute_detail_sample.json", "w", encoding="utf-8"
-            ) as f:
+            with open(output_dir / "attribute_detail_sample.json", "w", encoding="utf-8") as f:
                 json.dump(attr_detail, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
 
     # 3. Получаем атрибуты для класса объекта
@@ -135,20 +131,14 @@ async def explore_attributes_api() -> Dict[str, Any]:
     if isinstance(classes, list) and classes:
         class_id = classes[0].get("Id", "")
         if class_id:
-            status, class_attrs = await make_api_request(
-                f"api/structure/entities/{class_id}/attributes"
-            )
+            status, class_attrs = await make_api_request(f"api/structure/entities/{class_id}/attributes")
             results["class_attributes"] = {
                 "status": status,
-                "sample": class_attrs[:2]
-                if isinstance(class_attrs, list)
-                else class_attrs,
+                "sample": class_attrs[:2] if isinstance(class_attrs, list) else class_attrs,
                 "count": len(class_attrs) if isinstance(class_attrs, list) else 0,
             }
 
-            with open(
-                output_dir / "class_attributes_sample.json", "w", encoding="utf-8"
-            ) as f:
+            with open(output_dir / "class_attributes_sample.json", "w", encoding="utf-8") as f:
                 if isinstance(class_attrs, list) and class_attrs:
                     json.dump(
                         class_attrs[:5],
@@ -158,9 +148,7 @@ async def explore_attributes_api() -> Dict[str, Any]:
                         cls=UUIDEncoder,
                     )
                 else:
-                    json.dump(
-                        class_attrs, f, ensure_ascii=False, indent=2, cls=UUIDEncoder
-                    )
+                    json.dump(class_attrs, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
 
     return results
 
@@ -199,9 +187,7 @@ async def explore_objects_api(class_id: str = None) -> Dict[str, Any]:
         "Skip": 0,
     }
 
-    status, objects = await make_api_request(
-        "api/objects/search", method="POST", data=search_data
-    )
+    status, objects = await make_api_request("api/objects/search", method="POST", data=search_data)
     results["objects_search"] = {
         "status": status,
         "sample": objects,
@@ -222,20 +208,14 @@ async def explore_objects_api(class_id: str = None) -> Dict[str, Any]:
             status, obj_detail = await make_api_request(f"api/objects/{obj_id}")
             results["object_detail"] = {"status": status, "data": obj_detail}
 
-            with open(
-                output_dir / "object_detail_sample.json", "w", encoding="utf-8"
-            ) as f:
+            with open(output_dir / "object_detail_sample.json", "w", encoding="utf-8") as f:
                 json.dump(obj_detail, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
 
             # 3. Получаем значения атрибутов объекта
-            status, obj_attrs = await make_api_request(
-                f"api/objects/{obj_id}/attributes"
-            )
+            status, obj_attrs = await make_api_request(f"api/objects/{obj_id}/attributes")
             results["object_attributes"] = {"status": status, "data": obj_attrs}
 
-            with open(
-                output_dir / "object_attributes_sample.json", "w", encoding="utf-8"
-            ) as f:
+            with open(output_dir / "object_attributes_sample.json", "w", encoding="utf-8") as f:
                 json.dump(obj_attrs, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
 
     return results
@@ -248,9 +228,7 @@ async def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Исследование структуры API Neosintez")
-    parser.add_argument(
-        "--class-id", type=str, help="ID класса для исследования объектов"
-    )
+    parser.add_argument("--class-id", type=str, help="ID класса для исследования объектов")
     args = parser.parse_args()
 
     # Создаем директорию для результатов

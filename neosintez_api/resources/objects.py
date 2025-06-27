@@ -47,11 +47,7 @@ class ObjectsResource(BaseResource):
         result = await self._request("GET", endpoint)
         if isinstance(result, dict):
             # Преобразуем Entity в EntityId для совместимости с нашей моделью
-            if (
-                "Entity" in result
-                and isinstance(result["Entity"], dict)
-                and "Id" in result["Entity"]
-            ):
+            if "Entity" in result and isinstance(result["Entity"], dict) and "Id" in result["Entity"]:
                 result["EntityId"] = result["Entity"]["Id"]
 
             return Object.model_validate(result)
@@ -60,19 +56,27 @@ class ObjectsResource(BaseResource):
 
         raise NeosintezAPIError(404, "Объект не найден", None)
 
-    async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create(self, data: Dict[str, Any], parent_id: Optional[Union[str, UUID]] = None) -> Dict[str, Any]:
         """
         Создает новый объект.
 
         Args:
             data: Данные объекта для создания
+            parent_id: ID родительского объекта (передается как query параметр)
 
         Returns:
             Dict[str, Any]: Созданный объект с его ID и другими данными
         """
         try:
             logger.debug(f"Отправка запроса на создание объекта: {data}")
-            response = await self._request("POST", "api/objects", data=data)
+            
+            # Добавляем parent_id как query параметр, если он указан
+            params = {}
+            if parent_id:
+                params["parent"] = str(parent_id)
+                logger.debug(f"Создание объекта с родителем: {parent_id}")
+            
+            response = await self._request("POST", "api/objects", data=data, params=params)
             return response
         except Exception as e:
             logger.error(f"Ошибка при создании объекта: {e}")
@@ -157,9 +161,7 @@ class ObjectsResource(BaseResource):
 
         headers = {"X-HTTP-Method-Override": "GET"}
 
-        result = await self._request(
-            "POST", endpoint, params=params, data=request, headers=headers
-        )
+        result = await self._request("POST", endpoint, params=params, data=request, headers=headers)
         return SearchResponse.model_validate(result)
 
     async def search_all(self, request: SearchRequest) -> List[Object]:
@@ -271,9 +273,7 @@ class ObjectsResource(BaseResource):
         await self._request("PUT", endpoint, params=params)
         return True
 
-    async def move(
-        self, object_id: Union[str, UUID], parent_id: Union[str, UUID]
-    ) -> bool:
+    async def move(self, object_id: Union[str, UUID], parent_id: Union[str, UUID]) -> bool:
         """
         Перемещает объект под нового родителя.
 
@@ -357,9 +357,7 @@ class ObjectsResource(BaseResource):
             object_id = str(object_id)
 
         # Проверка формата входных атрибутов и логирование
-        logger.debug(
-            f"Получены атрибуты для установки. Тип: {type(attributes)}, значение: {attributes}"
-        )
+        logger.debug(f"Получены атрибуты для установки. Тип: {type(attributes)}, значение: {attributes}")
 
         # Преобразуем атрибуты в нужный формат для API
         attributes_array = []
@@ -458,9 +456,7 @@ class ObjectsResource(BaseResource):
         logger.debug(f"Отправка запроса на установку атрибутов: {attributes_array}")
 
         # Вывод атрибутов в формате JSON для отладки
-        logger.debug(
-            f"Атрибуты в JSON: {json.dumps(attributes_array, cls=CustomJSONEncoder)}"
-        )
+        logger.debug(f"Атрибуты в JSON: {json.dumps(attributes_array, cls=CustomJSONEncoder)}")
 
         try:
             await self._request("PUT", endpoint, data=attributes_array)

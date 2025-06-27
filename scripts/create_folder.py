@@ -77,9 +77,7 @@ async def create_folder(parent_id: str, folder_name: str):
             }
 
             # Вызываем API для создания объекта
-            logger.info(
-                f"Создание папки '{folder_name}' в родительском объекте {parent_id}"
-            )
+            logger.info(f"Создание папки '{folder_name}' в родительском объекте {parent_id}")
             created_id = await client.objects.create(parent_id=parent_id, data=data)
 
             logger.info(f"Папка МВЗ успешно создана. ID: {created_id}")
@@ -87,9 +85,7 @@ async def create_folder(parent_id: str, folder_name: str):
             # Проверяем, что объект действительно создан
             try:
                 created_obj = await client.objects.get_by_id(created_id)
-                logger.info(
-                    f"Объект проверен: {created_obj.Name} (ID: {created_obj.Id})"
-                )
+                logger.info(f"Объект проверен: {created_obj.Name} (ID: {created_obj.Id})")
             except Exception as e:
                 logger.error(f"Ошибка при проверке созданного объекта: {e!s}")
 
@@ -111,9 +107,7 @@ async def main():
     """
     try:
         # Парсим аргументы командной строки
-        parser = argparse.ArgumentParser(
-            description="Создание объекта типа 'Папка МВЗ' в Neosintez"
-        )
+        parser = argparse.ArgumentParser(description="Создание объекта типа 'Папка МВЗ' в Neosintez")
         parser.add_argument(
             "--name",
             default="Новая папка",
@@ -130,9 +124,7 @@ async def main():
         parent_id = args.parent
         folder_name = args.name
 
-        logger.info(
-            f"Запуск создания папки '{folder_name}' в родительском объекте {parent_id}"
-        )
+        logger.info(f"Запуск создания папки '{folder_name}' в родительском объекте {parent_id}")
 
         # Создаем папку
         created_id = await create_folder(parent_id, folder_name)

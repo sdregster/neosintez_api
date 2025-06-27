@@ -106,9 +106,7 @@ class NeosintezExcelImporter:
             if self.worksheet_name is None:
                 self.df = pd.read_excel(self.excel_path, header=None)
             else:
-                self.df = pd.read_excel(
-                    self.excel_path, sheet_name=self.worksheet_name, header=None
-                )
+                self.df = pd.read_excel(self.excel_path, sheet_name=self.worksheet_name, header=None)
 
             logger.info(f"Загружено {len(self.df)} строк данных")
 
@@ -134,21 +132,9 @@ class NeosintezExcelImporter:
         first_row = self.df.iloc[0]
 
         # Проверяем наличие ключевых слов в первой строке
-        has_level = any(
-            name.lower() in str(cell).lower()
-            for name in self.LEVEL_COLUMN_NAMES
-            for cell in first_row
-        )
-        has_class = any(
-            name.lower() in str(cell).lower()
-            for name in self.CLASS_COLUMN_NAMES
-            for cell in first_row
-        )
-        has_name = any(
-            name.lower() in str(cell).lower()
-            for name in self.NAME_COLUMN_NAMES
-            for cell in first_row
-        )
+        has_level = any(name.lower() in str(cell).lower() for name in self.LEVEL_COLUMN_NAMES for cell in first_row)
+        has_class = any(name.lower() in str(cell).lower() for name in self.CLASS_COLUMN_NAMES for cell in first_row)
+        has_name = any(name.lower() in str(cell).lower() for name in self.NAME_COLUMN_NAMES for cell in first_row)
 
         self.has_headers = has_level and has_class and has_name
 
@@ -157,9 +143,7 @@ class NeosintezExcelImporter:
             # Используем первую строку как заголовки
             self.headers = [str(cell) for cell in first_row]
         else:
-            logger.info(
-                "Первая строка не содержит заголовки, используем стандартные имена колонок"
-            )
+            logger.info("Первая строка не содержит заголовки, используем стандартные имена колонок")
             # Используем стандартные имена колонок
             self.headers = [f"Column_{i}" for i in range(len(first_row))]
 
@@ -168,9 +152,7 @@ class NeosintezExcelImporter:
                 self.level_column = 0
                 self.class_column = 1
                 self.name_column = 2
-                logger.info(
-                    "Используем стандартное расположение колонок: Уровень(0), Класс(1), Имя объекта(2)"
-                )
+                logger.info("Используем стандартное расположение колонок: Уровень(0), Класс(1), Имя объекта(2)")
 
     def _detect_columns(self):
         """
@@ -181,11 +163,7 @@ class NeosintezExcelImporter:
             return
 
         # Если у нас уже определены колонки, ничего не делаем
-        if (
-            self.level_column is not None
-            and self.class_column is not None
-            and self.name_column is not None
-        ):
+        if self.level_column is not None and self.class_column is not None and self.name_column is not None:
             return
 
         # Если нет заголовков, используем первую строку для определения
@@ -193,18 +171,14 @@ class NeosintezExcelImporter:
             return
 
         # Сохраняем все колонки для отладки
-        self.columns_info = {
-            col_idx: col_name for col_idx, col_name in enumerate(self.headers)
-        }
+        self.columns_info = {col_idx: col_name for col_idx, col_name in enumerate(self.headers)}
 
         # Определяем колонку уровня
         for name in self.LEVEL_COLUMN_NAMES:
             for col_idx, col_name in enumerate(self.headers):
                 if isinstance(col_name, str) and name.lower() in col_name.lower():
                     self.level_column = col_idx
-                    logger.info(
-                        f"Определена колонка уровня: '{col_name}' (индекс {col_idx})"
-                    )
+                    logger.info(f"Определена колонка уровня: '{col_name}' (индекс {col_idx})")
                     break
             if self.level_column is not None:
                 break
@@ -214,9 +188,7 @@ class NeosintezExcelImporter:
             for col_idx, col_name in enumerate(self.headers):
                 if isinstance(col_name, str) and name.lower() in col_name.lower():
                     self.class_column = col_idx
-                    logger.info(
-                        f"Определена колонка класса: '{col_name}' (индекс {col_idx})"
-                    )
+                    logger.info(f"Определена колонка класса: '{col_name}' (индекс {col_idx})")
                     break
             if self.class_column is not None:
                 break
@@ -226,26 +198,18 @@ class NeosintezExcelImporter:
             for col_idx, col_name in enumerate(self.headers):
                 if isinstance(col_name, str) and name.lower() in col_name.lower():
                     self.name_column = col_idx
-                    logger.info(
-                        f"Определена колонка имени: '{col_name}' (индекс {col_idx})"
-                    )
+                    logger.info(f"Определена колонка имени: '{col_name}' (индекс {col_idx})")
                     break
             if self.name_column is not None:
                 break
 
         # Проверяем, что все необходимые колонки найдены
         if self.level_column is None:
-            logger.warning(
-                f"Не удалось определить колонку уровня. Искали {self.LEVEL_COLUMN_NAMES}"
-            )
+            logger.warning(f"Не удалось определить колонку уровня. Искали {self.LEVEL_COLUMN_NAMES}")
         if self.class_column is None:
-            logger.warning(
-                f"Не удалось определить колонку класса. Искали {self.CLASS_COLUMN_NAMES}"
-            )
+            logger.warning(f"Не удалось определить колонку класса. Искали {self.CLASS_COLUMN_NAMES}")
         if self.name_column is None:
-            logger.warning(
-                f"Не удалось определить колонку имени объекта. Искали {self.NAME_COLUMN_NAMES}"
-            )
+            logger.warning(f"Не удалось определить колонку имени объекта. Искали {self.NAME_COLUMN_NAMES}")
 
     async def load_neosintez_classes(self) -> Dict[str, EntityClass]:
         """
@@ -294,14 +258,8 @@ class NeosintezExcelImporter:
             await self.load_excel()
 
         # Проверяем, что все необходимые колонки определены
-        if (
-            self.level_column is None
-            or self.class_column is None
-            or self.name_column is None
-        ):
-            logger.error(
-                "Не все необходимые колонки определены. Невозможно построить иерархию."
-            )
+        if self.level_column is None or self.class_column is None or self.name_column is None:
+            logger.error("Не все необходимые колонки определены. Невозможно построить иерархию.")
             return []
 
         # Загружаем классы, если они еще не загружены
@@ -345,16 +303,12 @@ class NeosintezExcelImporter:
                     if class_name.lower() in existing_class_name.lower():
                         entity_class = entity_class_obj
                         class_id = entity_class.Id
-                        logger.info(
-                            f"Для класса '{class_name}' найдено частичное совпадение: '{existing_class_name}'"
-                        )
+                        logger.info(f"Для класса '{class_name}' найдено частичное совпадение: '{existing_class_name}'")
                         class_found = True
                         break
 
             if not class_found:
-                logger.warning(
-                    f"Класс '{class_name}' не найден в Neosintez. Пропуск строки {idx}."
-                )
+                logger.warning(f"Класс '{class_name}' не найден в Neosintez. Пропуск строки {idx}.")
                 continue
 
             # Определяем родительский объект
@@ -383,9 +337,7 @@ class NeosintezExcelImporter:
                     if not pd.isna(value):
                         # Добавляем атрибут в словарь
                         obj["attributes"][col_name] = value
-                        logger.debug(
-                            f"Добавлен атрибут '{col_name}' = '{value}' для объекта '{name}'"
-                        )
+                        logger.debug(f"Добавлен атрибут '{col_name}' = '{value}' для объекта '{name}'")
 
             objects.append(obj)
 
@@ -402,9 +354,7 @@ class NeosintezExcelImporter:
 
         return objects
 
-    async def create_objects_in_neosintez(
-        self, objects: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    async def create_objects_in_neosintez(self, objects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Создает объекты в Neosintez.
 
@@ -414,9 +364,7 @@ class NeosintezExcelImporter:
         Returns:
             Список созданных объектов с добавленными ID из Neosintez
         """
-        logger.info(
-            f"Начало создания объектов в Neosintez. Всего объектов: {len(objects)}"
-        )
+        logger.info(f"Начало создания объектов в Neosintez. Всего объектов: {len(objects)}")
 
         # Словарь для хранения созданных объектов: временный id -> реальный id в Neosintez
         created_objects = {}
@@ -475,9 +423,7 @@ class NeosintezExcelImporter:
                 logger.info(f"  UUID: {obj['id']}")
 
                 # Формируем ссылку на объект
-                object_url = (
-                    f"{str(self.client.base_url).rstrip('/')}/objects?id={obj['id']}"
-                )
+                object_url = f"{str(self.client.base_url).rstrip('/')}/objects?id={obj['id']}"
                 logger.info(f"  Ссылка: {object_url}")
 
                 print(f"► {obj['name']} (Класс: {obj['class']})")
@@ -488,9 +434,7 @@ class NeosintezExcelImporter:
         logger.info(f"Создано {len(result)} объектов в Neosintez")
         return result
 
-    async def set_object_attributes(
-        self, object_id: str, attributes: Dict[str, Any]
-    ) -> bool:
+    async def set_object_attributes(self, object_id: str, attributes: Dict[str, Any]) -> bool:
         """
         Устанавливает атрибуты объекта.
 
@@ -543,13 +487,9 @@ class NeosintezExcelImporter:
                         "Value": attr_value,
                     }
                     attributes_data.append(attribute_data)
-                    logger.info(
-                        f"Атрибут '{attr_name}' (ID: {attr_found.Id}) будет установлен в '{attr_value}'"
-                    )
+                    logger.info(f"Атрибут '{attr_name}' (ID: {attr_found.Id}) будет установлен в '{attr_value}'")
                 else:
-                    logger.warning(
-                        f"Атрибут '{attr_name}' не найден для класса {entity_id}"
-                    )
+                    logger.warning(f"Атрибут '{attr_name}' не найден для класса {entity_id}")
 
             # Если есть атрибуты для обновления
             if attributes_data:
@@ -563,14 +503,10 @@ class NeosintezExcelImporter:
                 return True
 
         except Exception as e:
-            logger.error(
-                f"Ошибка при установке атрибутов объекта {object_id}: {e!s}"
-            )
+            logger.error(f"Ошибка при установке атрибутов объекта {object_id}: {e!s}")
             return False
 
-    async def set_object_attributes_direct(
-        self, object_id: str, attributes: Dict[str, Any]
-    ) -> bool:
+    async def set_object_attributes_direct(self, object_id: str, attributes: Dict[str, Any]) -> bool:
         """
         Устанавливает атрибуты объекта напрямую через API.
 
@@ -596,9 +532,7 @@ class NeosintezExcelImporter:
 
             for attr_name, attr_value in attributes.items():
                 # Ищем атрибут в списке атрибутов класса
-                class_attr = next(
-                    (a for a in class_attributes if a["Name"] == attr_name), None
-                )
+                class_attr = next((a for a in class_attributes if a["Name"] == attr_name), None)
                 if class_attr:
                     attr_id = class_attr["Id"]
                     attr_type = class_attr["Type"]
@@ -619,9 +553,7 @@ class NeosintezExcelImporter:
                         }
                     )
                 else:
-                    logger.warning(
-                        f"Атрибут '{attr_name}' не найден для класса {entity_id}"
-                    )
+                    logger.warning(f"Атрибут '{attr_name}' не найден для класса {entity_id}")
 
             # Если нет атрибутов для обновления, возвращаем True
             if not attributes_to_update:
@@ -638,9 +570,7 @@ class NeosintezExcelImporter:
                     return True
                 else:
                     error_text = await response.text()
-                    logger.error(
-                        f"Ошибка при обновлении атрибутов объекта {object_id}: {error_text}"
-                    )
+                    logger.error(f"Ошибка при обновлении атрибутов объекта {object_id}: {error_text}")
                     return False
 
         except Exception as e:
@@ -735,9 +665,7 @@ class NeosintezExcelImporter:
         # Для всех остальных типов возвращаем значение без изменений
         return value
 
-    async def verify_created_objects_by_id(
-        self, created_objects: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    async def verify_created_objects_by_id(self, created_objects: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Проверяет наличие созданных объектов путем запроса каждого объекта по его ID.
         Более надежный метод, чем verify_imported_objects, так как не зависит от структуры родительского объекта.
@@ -787,9 +715,7 @@ class NeosintezExcelImporter:
                             "error": str(e),
                         }
                     )
-                    logger.warning(
-                        f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {e!s}"
-                    )
+                    logger.warning(f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {e!s}")
             else:
                 verification_results["missing_objects"] += 1
                 verification_results["details"].append(
@@ -807,9 +733,7 @@ class NeosintezExcelImporter:
             f"Проверка завершена. Найдено: {verification_results['found_objects']} из {verification_results['total_objects']} объектов"
         )
         if verification_results["missing_objects"] > 0:
-            logger.warning(
-                f"Не найдено {verification_results['missing_objects']} объектов"
-            )
+            logger.warning(f"Не найдено {verification_results['missing_objects']} объектов")
 
         return verification_results
 
@@ -830,21 +754,15 @@ class NeosintezExcelImporter:
             "columns_found": {
                 "level": {
                     "index": self.level_column,
-                    "name": self.headers[self.level_column]
-                    if self.level_column is not None
-                    else None,
+                    "name": self.headers[self.level_column] if self.level_column is not None else None,
                 },
                 "class": {
                     "index": self.class_column,
-                    "name": self.headers[self.class_column]
-                    if self.class_column is not None
-                    else None,
+                    "name": self.headers[self.class_column] if self.class_column is not None else None,
                 },
                 "name": {
                     "index": self.name_column,
-                    "name": self.headers[self.name_column]
-                    if self.name_column is not None
-                    else None,
+                    "name": self.headers[self.name_column] if self.name_column is not None else None,
                 },
             },
             "all_columns": self.columns_info,
@@ -858,15 +776,9 @@ class NeosintezExcelImporter:
         for idx, row in self.df.iloc[start_row : start_row + 5].iterrows():
             row_data = {
                 "row_idx": idx,
-                "level": row.iloc[self.level_column]
-                if self.level_column is not None
-                else None,
-                "class": row.iloc[self.class_column]
-                if self.class_column is not None
-                else None,
-                "name": row.iloc[self.name_column]
-                if self.name_column is not None
-                else None,
+                "level": row.iloc[self.level_column] if self.level_column is not None else None,
+                "class": row.iloc[self.class_column] if self.class_column is not None else None,
+                "name": row.iloc[self.name_column] if self.name_column is not None else None,
             }
             result["data_sample"].append(row_data)
 
@@ -903,9 +815,7 @@ class NeosintezExcelImporter:
 
         # Выводим информацию о каждом объекте
         for obj in objects:
-            attributes_str = ", ".join(
-                [f"{k}: {v}" for k, v in obj["attributes"].items()]
-            )
+            attributes_str = ", ".join([f"{k}: {v}" for k, v in obj["attributes"].items()])
             logger.info(
                 f"Объект: '{obj['name']}' (ID: {obj['id']}, Класс: {obj['class_name']}, Родитель: {obj['parent_id']}, Уровень: {obj['level']}, Атрибуты: {attributes_str})"
             )
@@ -932,21 +842,13 @@ class NeosintezExcelImporter:
             for obj in created_objects:
                 if "neosintez_id" in obj:
                     try:
-                        neosintez_obj = await self.client.objects.get_by_id(
-                            obj["neosintez_id"]
-                        )
-                        logger.info(
-                            f"Объект найден: {neosintez_obj.Name} (ID: {neosintez_obj.Id})"
-                        )
+                        neosintez_obj = await self.client.objects.get_by_id(obj["neosintez_id"])
+                        logger.info(f"Объект найден: {neosintez_obj.Name} (ID: {neosintez_obj.Id})")
                         verified_objects.append(obj)
                     except Exception as e:
-                        logger.error(
-                            f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {e!s}"
-                        )
+                        logger.error(f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {e!s}")
 
-            logger.info(
-                f"Проверка завершена. Найдено: {len(verified_objects)} из {len(created_objects)} объектов"
-            )
+            logger.info(f"Проверка завершена. Найдено: {len(verified_objects)} из {len(created_objects)} объектов")
 
             # Сохраняем результат в файл
             result = {
@@ -990,21 +892,13 @@ class NeosintezExcelImporter:
             for obj in created_objects:
                 if "neosintez_id" in obj:
                     try:
-                        neosintez_obj = await self.client.objects.get_by_id(
-                            obj["neosintez_id"]
-                        )
-                        logger.info(
-                            f"Объект найден: {neosintez_obj.Name} (ID: {neosintez_obj.Id})"
-                        )
+                        neosintez_obj = await self.client.objects.get_by_id(obj["neosintez_id"])
+                        logger.info(f"Объект найден: {neosintez_obj.Name} (ID: {neosintez_obj.Id})")
                         verified_count += 1
                     except Exception as e:
-                        logger.error(
-                            f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {e!s}"
-                        )
+                        logger.error(f"Объект не найден: {obj['name']} (ID: {obj['neosintez_id']}): {e!s}")
 
-            logger.info(
-                f"Проверка завершена. Найдено: {verified_count} из {len(created_objects)} объектов"
-            )
+            logger.info(f"Проверка завершена. Найдено: {verified_count} из {len(created_objects)} объектов")
 
             return result
 
@@ -1027,9 +921,7 @@ class NeosintezExcelImporter:
         Returns:
             Dict[str, Any]: Созданный объект или None, если создание не удалось
         """
-        logger.info(
-            f"Создание объекта '{name}' класса '{entity_class_id}' с родителем {parent_id}"
-        )
+        logger.info(f"Создание объекта '{name}' класса '{entity_class_id}' с родителем {parent_id}")
 
         try:
             # Создаем словарь с данными объекта
@@ -1095,9 +987,7 @@ async def main():
         # Определяем режим работы (тестовый или реальный импорт)
         import argparse
 
-        parser = argparse.ArgumentParser(
-            description="Импорт данных из Excel в Neosintez"
-        )
+        parser = argparse.ArgumentParser(description="Импорт данных из Excel в Neosintez")
         parser.add_argument(
             "--test",
             action="store_true",
@@ -1137,24 +1027,18 @@ async def main():
             # Проверяем существование родительского объекта
             try:
                 parent_object = await client.objects.get_by_id(args.parent)
-                logger.info(
-                    f"Родительский объект: {parent_object.Name} (ID: {parent_object.Id})"
-                )
+                logger.info(f"Родительский объект: {parent_object.Name} (ID: {parent_object.Id})")
             except Exception as e:
                 logger.error(f"Ошибка при получении родительского объекта: {e!s}")
                 return
 
             # Создаем импортер и запускаем импорт
-            importer = NeosintezExcelImporter(
-                client=client, excel_path=excel_path, target_object_id=args.parent
-            )
+            importer = NeosintezExcelImporter(client=client, excel_path=excel_path, target_object_id=args.parent)
             result = await importer.process_import(test_mode=args.test)
 
             # Выводим сводку об импорте
             if args.test:
-                logger.info(
-                    "Тестовый режим завершен. Объекты не были созданы в Neosintez."
-                )
+                logger.info("Тестовый режим завершен. Объекты не были созданы в Neosintez.")
 
                 # Выводим сводку по объектам
                 classes_count = {}
@@ -1168,9 +1052,7 @@ async def main():
                 for class_name, count in classes_count.items():
                     logger.info(f"  {class_name}: {count} объектов")
             else:
-                logger.info(
-                    "Импорт завершен. Результат сохранен в data/import_result.json"
-                )
+                logger.info("Импорт завершен. Результат сохранен в data/import_result.json")
 
                 # Выводим сводку по созданным объектам
                 classes_count = {}
@@ -1185,9 +1067,7 @@ async def main():
                     logger.info(f"  {class_name}: {count} объектов")
 
                 # Выводим информацию о созданных объектах первого уровня
-                root_level_objects = [
-                    obj for obj in result["objects"] if obj["level"] == 1
-                ]
+                root_level_objects = [obj for obj in result["objects"] if obj["level"] == 1]
                 if root_level_objects:
                     print("\n" + "=" * 80)
                     print("СОЗДАННЫЕ КЛЮЧЕВЫЕ ОБЪЕКТЫ (уровень 1):")

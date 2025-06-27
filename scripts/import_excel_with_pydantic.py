@@ -115,16 +115,12 @@ async def get_entity_meta(
         # Ищем нужный класс по имени или ID
         target_class = None
         for cls in all_classes_with_attrs:
-            if (class_name and cls.get("Name") == class_name) or (
-                class_id and str(cls.get("Id")) == str(class_id)
-            ):
+            if (class_name and cls.get("Name") == class_name) or (class_id and str(cls.get("Id")) == str(class_id)):
                 target_class = cls
                 break
 
         if not target_class:
-            logger.warning(
-                f"Класс '{cache_key}' не найден в списке классов с атрибутами"
-            )
+            logger.warning(f"Класс '{cache_key}' не найден в списке классов с атрибутами")
             # Пробуем стандартный метод
             logger.info("Пробуем получить классы стандартным методом...")
             classes = await client.classes.get_all()
@@ -132,40 +128,28 @@ async def get_entity_meta(
 
             # Ищем нужный класс по имени или ID
             for cls in classes:
-                if (class_name and cls.Name == class_name) or (
-                    class_id and str(cls.Id) == str(class_id)
-                ):
+                if (class_name and cls.Name == class_name) or (class_id and str(cls.Id) == str(class_id)):
                     target_class_obj = cls
                     target_class = target_class_obj.model_dump()
                     break
 
             if not target_class:
                 search_term = class_name if class_name else f"с ID {class_id}"
-                raise ValueError(
-                    f"Класс {search_term} не найден в списке классов API Neosintez"
-                )
+                raise ValueError(f"Класс {search_term} не найден в списке классов API Neosintez")
 
-            logger.info(
-                f"Найден класс '{target_class['Name']}' (ID: {target_class['Id']})"
-            )
+            logger.info(f"Найден класс '{target_class['Name']}' (ID: {target_class['Id']})")
 
             # Получаем атрибуты отдельно
             attributes = await client.classes.get_attributes(target_class["Id"])
-            logger.info(
-                f"Получено {len(attributes)} атрибутов для класса '{target_class['Name']}'"
-            )
+            logger.info(f"Получено {len(attributes)} атрибутов для класса '{target_class['Name']}'")
 
             if len(attributes) == 0:
-                logger.warning(
-                    f"Внимание: класс '{target_class['Name']}' не имеет атрибутов!"
-                )
+                logger.warning(f"Внимание: класс '{target_class['Name']}' не имеет атрибутов!")
 
             # Собираем информацию в словарь
             target_class["Attributes"] = [attr.model_dump() for attr in attributes]
         else:
-            logger.info(
-                f"Найден класс '{target_class['Name']}' (ID: {target_class['Id']}) с атрибутами"
-            )
+            logger.info(f"Найден класс '{target_class['Name']}' (ID: {target_class['Id']}) с атрибутами")
 
             # Превращаем атрибуты из словаря {id: data} в список атрибутов для совместимости
             attributes_list = []
@@ -188,17 +172,13 @@ async def get_entity_meta(
                             # Добавляем в список атрибутов
                             attributes_list.append(attr_dict)
                         except Exception as e:
-                            logger.error(
-                                f"Ошибка при обработке атрибута {attr_id}: {e!s}"
-                            )
+                            logger.error(f"Ошибка при обработке атрибута {attr_id}: {e!s}")
                 elif isinstance(target_class["Attributes"], list):
                     # Если атрибуты уже в формате списка
                     attributes_list = target_class["Attributes"]
 
             target_class["Attributes"] = attributes_list
-            logger.info(
-                f"Обработано {len(attributes_list)} атрибутов для класса '{target_class['Name']}'"
-            )
+            logger.info(f"Обработано {len(attributes_list)} атрибутов для класса '{target_class['Name']}'")
 
         # Сохраняем класс в кэше
         ENTITY_CACHE[cache_key] = target_class
@@ -225,9 +205,7 @@ class PydanticExcelParser:
     CLASS_COLUMN_NAMES = ["Класс", "Class", "Тип объекта"]
     NAME_COLUMN_NAMES = ["Имя объекта", "Name", "Название объекта", "Наименование"]
 
-    def __init__(
-        self, client: NeosintezClient, excel_path: str, worksheet_name: str = None
-    ):
+    def __init__(self, client: NeosintezClient, excel_path: str, worksheet_name: str = None):
         """
         Инициализация парсера Excel.
 
@@ -274,9 +252,7 @@ class PydanticExcelParser:
             if self.worksheet_name is None:
                 self.df = pd.read_excel(self.excel_path, header=None)
             else:
-                self.df = pd.read_excel(
-                    self.excel_path, sheet_name=self.worksheet_name, header=None
-                )
+                self.df = pd.read_excel(self.excel_path, sheet_name=self.worksheet_name, header=None)
 
             logger.info(f"Загружено {len(self.df)} строк данных")
 
@@ -302,21 +278,9 @@ class PydanticExcelParser:
         first_row = self.df.iloc[0]
 
         # Проверяем наличие ключевых слов в первой строке
-        has_level = any(
-            name.lower() in str(cell).lower()
-            for name in self.LEVEL_COLUMN_NAMES
-            for cell in first_row
-        )
-        has_class = any(
-            name.lower() in str(cell).lower()
-            for name in self.CLASS_COLUMN_NAMES
-            for cell in first_row
-        )
-        has_name = any(
-            name.lower() in str(cell).lower()
-            for name in self.NAME_COLUMN_NAMES
-            for cell in first_row
-        )
+        has_level = any(name.lower() in str(cell).lower() for name in self.LEVEL_COLUMN_NAMES for cell in first_row)
+        has_class = any(name.lower() in str(cell).lower() for name in self.CLASS_COLUMN_NAMES for cell in first_row)
+        has_name = any(name.lower() in str(cell).lower() for name in self.NAME_COLUMN_NAMES for cell in first_row)
 
         self.has_headers = has_level and has_class and has_name
 
@@ -325,9 +289,7 @@ class PydanticExcelParser:
             # Используем первую строку как заголовки
             self.headers = [str(cell) for cell in first_row]
         else:
-            logger.info(
-                "Первая строка не содержит заголовки, используем стандартные имена колонок"
-            )
+            logger.info("Первая строка не содержит заголовки, используем стандартные имена колонок")
             # Используем стандартные имена колонок
             self.headers = [f"Column_{i}" for i in range(len(first_row))]
 
@@ -336,9 +298,7 @@ class PydanticExcelParser:
                 self.level_column = 0
                 self.class_column = 1
                 self.name_column = 2
-                logger.info(
-                    "Используем стандартное расположение колонок: Уровень(0), Класс(1), Имя объекта(2)"
-                )
+                logger.info("Используем стандартное расположение колонок: Уровень(0), Класс(1), Имя объекта(2)")
 
     def _detect_columns(self):
         """
@@ -349,11 +309,7 @@ class PydanticExcelParser:
             return
 
         # Если у нас уже определены колонки, ничего не делаем
-        if (
-            self.level_column is not None
-            and self.class_column is not None
-            and self.name_column is not None
-        ):
+        if self.level_column is not None and self.class_column is not None and self.name_column is not None:
             return
 
         # Если нет заголовков, используем первую строку для определения
@@ -361,18 +317,14 @@ class PydanticExcelParser:
             return
 
         # Сохраняем все колонки для отладки
-        self.columns_info = {
-            col_idx: col_name for col_idx, col_name in enumerate(self.headers)
-        }
+        self.columns_info = {col_idx: col_name for col_idx, col_name in enumerate(self.headers)}
 
         # Определяем колонку уровня
         for name in self.LEVEL_COLUMN_NAMES:
             for col_idx, col_name in enumerate(self.headers):
                 if isinstance(col_name, str) and name.lower() in col_name.lower():
                     self.level_column = col_idx
-                    logger.info(
-                        f"Определена колонка уровня: '{col_name}' (индекс {col_idx})"
-                    )
+                    logger.info(f"Определена колонка уровня: '{col_name}' (индекс {col_idx})")
                     break
             if self.level_column is not None:
                 break
@@ -382,9 +334,7 @@ class PydanticExcelParser:
             for col_idx, col_name in enumerate(self.headers):
                 if isinstance(col_name, str) and name.lower() in col_name.lower():
                     self.class_column = col_idx
-                    logger.info(
-                        f"Определена колонка класса: '{col_name}' (индекс {col_idx})"
-                    )
+                    logger.info(f"Определена колонка класса: '{col_name}' (индекс {col_idx})")
                     break
             if self.class_column is not None:
                 break
@@ -394,26 +344,18 @@ class PydanticExcelParser:
             for col_idx, col_name in enumerate(self.headers):
                 if isinstance(col_name, str) and name.lower() in col_name.lower():
                     self.name_column = col_idx
-                    logger.info(
-                        f"Определена колонка имени: '{col_name}' (индекс {col_idx})"
-                    )
+                    logger.info(f"Определена колонка имени: '{col_name}' (индекс {col_idx})")
                     break
             if self.name_column is not None:
                 break
 
         # Проверяем, что все необходимые колонки найдены
         if self.level_column is None:
-            logger.warning(
-                f"Не удалось определить колонку уровня. Искали {self.LEVEL_COLUMN_NAMES}"
-            )
+            logger.warning(f"Не удалось определить колонку уровня. Искали {self.LEVEL_COLUMN_NAMES}")
         if self.class_column is None:
-            logger.warning(
-                f"Не удалось определить колонку класса. Искали {self.CLASS_COLUMN_NAMES}"
-            )
+            logger.warning(f"Не удалось определить колонку класса. Искали {self.CLASS_COLUMN_NAMES}")
         if self.name_column is None:
-            logger.warning(
-                f"Не удалось определить колонку имени объекта. Искали {self.NAME_COLUMN_NAMES}"
-            )
+            logger.warning(f"Не удалось определить колонку имени объекта. Искали {self.NAME_COLUMN_NAMES}")
 
     async def load_neosintez_classes(self) -> Dict[str, EntityClass]:
         """
@@ -432,9 +374,7 @@ class PydanticExcelParser:
             logger.error(f"Ошибка при получении классов: {e!s}")
             raise
 
-    async def create_pydantic_model_for_class(
-        self, class_name: str
-    ) -> Type[NeosintezBaseModel]:
+    async def create_pydantic_model_for_class(self, class_name: str) -> Type[NeosintezBaseModel]:
         """
         Создает Pydantic-модель для заданного класса с учетом его атрибутов.
 
@@ -460,20 +400,14 @@ class PydanticExcelParser:
             for existing_class_name, entity_class_obj in self.classes_map.items():
                 if class_name.lower() in existing_class_name.lower():
                     entity_class = entity_class_obj
-                    entity = await get_entity_meta(
-                        self.client, class_name=existing_class_name
-                    )
-                    logger.info(
-                        f"Для класса '{class_name}' найдено частичное совпадение: '{existing_class_name}'"
-                    )
+                    entity = await get_entity_meta(self.client, class_name=existing_class_name)
+                    logger.info(f"Для класса '{class_name}' найдено частичное совпадение: '{existing_class_name}'")
                     # Обновляем класс для единообразия
                     class_name = existing_class_name
                     break
 
         if entity is None:
-            logger.warning(
-                f"Не найден класс '{class_name}' для создания Pydantic-модели"
-            )
+            logger.warning(f"Не найден класс '{class_name}' для создания Pydantic-модели")
             # Создаем базовую модель без атрибутов
             model = create_model(
                 f"{class_name}Model",
@@ -509,9 +443,7 @@ class PydanticExcelParser:
 
         # Сохраняем в кэше
         self.class_models[class_name] = model
-        logger.info(
-            f"Создана модель {model.__name__} с {len(fields)} атрибутами для класса '{class_name}'"
-        )
+        logger.info(f"Создана модель {model.__name__} с {len(fields)} атрибутами для класса '{class_name}'")
 
         return model
 
@@ -566,14 +498,8 @@ class PydanticExcelParser:
             await self.load_excel()
 
         # Проверяем, что все необходимые колонки определены
-        if (
-            self.level_column is None
-            or self.class_column is None
-            or self.name_column is None
-        ):
-            logger.error(
-                "Не все необходимые колонки определены. Невозможно распарсить данные."
-            )
+        if self.level_column is None or self.class_column is None or self.name_column is None:
+            logger.error("Не все необходимые колонки определены. Невозможно распарсить данные.")
             return {}
 
         # Загружаем классы из Neosintez, если они еще не загружены
@@ -602,9 +528,7 @@ class PydanticExcelParser:
                 if pd.isna(name):
                     name = f"{class_name} #{idx + 1}"
 
-                logger.debug(
-                    f"Обработка строки {idx}: уровень {level}, класс '{class_name}', имя '{name}'"
-                )
+                logger.debug(f"Обработка строки {idx}: уровень {level}, класс '{class_name}', имя '{name}'")
 
                 # Создаем или получаем модель для класса
                 model_class = await self.create_pydantic_model_for_class(class_name)
@@ -628,21 +552,15 @@ class PydanticExcelParser:
                             field_name_in_model = None
                             for field_name in model_fields:
                                 field_info = model_class.model_fields.get(field_name)
-                                if field_name == col_name or (
-                                    field_info and field_info.alias == col_name
-                                ):
+                                if field_name == col_name or (field_info and field_info.alias == col_name):
                                     field_name_in_model = field_name
                                     break
 
                             if field_name_in_model:
                                 model_data[field_name_in_model] = value
-                                logger.debug(
-                                    f"Атрибут '{col_name}' = '{value}' добавлен в модель"
-                                )
+                                logger.debug(f"Атрибут '{col_name}' = '{value}' добавлен в модель")
                             else:
-                                logger.debug(
-                                    f"Атрибут '{col_name}' не найден в модели для класса '{class_name}'"
-                                )
+                                logger.debug(f"Атрибут '{col_name}' не найден в модели для класса '{class_name}'")
 
                 # Создаем экземпляр модели
                 try:
@@ -655,9 +573,7 @@ class PydanticExcelParser:
 
                     logger.debug(f"Создана модель для объекта '{name}' уровня {level}")
                 except Exception as e:
-                    logger.error(
-                        f"Ошибка при создании модели для объекта '{name}': {e!s}"
-                    )
+                    logger.error(f"Ошибка при создании модели для объекта '{name}': {e!s}")
                     continue
 
             except Exception as e:

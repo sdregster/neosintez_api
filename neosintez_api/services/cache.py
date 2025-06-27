@@ -92,9 +92,7 @@ class TTLCache(Generic[T]):
         if not self._cache:
             return
 
-        oldest_key = min(
-            self._cache.keys(), key=lambda k: self._cache[k].get("created", 0)
-        )
+        oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].get("created", 0))
         del self._cache[oldest_key]
 
     def size(self) -> int:

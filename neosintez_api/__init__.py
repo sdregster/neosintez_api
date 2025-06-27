@@ -2,6 +2,7 @@
 Пакет для работы с API Неосинтез через Python.
 """
 
+from .cli import cli
 from .config import NeosintezSettings
 from .core import (
     NeosintezAPIError,
@@ -14,7 +15,6 @@ from .core import (
 )
 from .model_utils import create_model_from_class_attributes, neosintez_model
 from .services.object_service import ObjectService
-from .cli import cli
 
 
 __all__ = [

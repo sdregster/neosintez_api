@@ -143,9 +143,7 @@ class FixedExcelImporter:
 
         # Получаем названия колонок
         if len(self.df.columns) < 3:
-            logger.error(
-                "В файле должно быть не менее трех колонок: Имя, Класс, Родитель"
-            )
+            logger.error("В файле должно быть не менее трех колонок: Имя, Класс, Родитель")
             return []
 
         # Предполагаем, что первые три колонки - это Имя, Класс, Родитель
@@ -153,9 +151,7 @@ class FixedExcelImporter:
         class_col = self.df.columns[1]
         parent_col = self.df.columns[2]
 
-        logger.info(
-            f"Используем колонки: Имя={name_col}, Класс={class_col}, Родитель={parent_col}"
-        )
+        logger.info(f"Используем колонки: Имя={name_col}, Класс={class_col}, Родитель={parent_col}")
 
         # Строим иерархию объектов
         objects = []
@@ -185,15 +181,11 @@ class FixedExcelImporter:
                     if class_name.lower() in existing_class_name.lower():
                         entity_class = entity_class_obj
                         class_id = entity_class.Id
-                        logger.info(
-                            f"Для класса '{class_name}' найдено частичное совпадение: '{existing_class_name}'"
-                        )
+                        logger.info(f"Для класса '{class_name}' найдено частичное совпадение: '{existing_class_name}'")
                         break
 
             if class_id is None:
-                logger.warning(
-                    f"Класс '{class_name}' не найден в Neosintez. Пропуск строки {idx}."
-                )
+                logger.warning(f"Класс '{class_name}' не найден в Neosintez. Пропуск строки {idx}.")
                 continue
 
             # Создаем временный ID для объекта
@@ -202,9 +194,7 @@ class FixedExcelImporter:
             # Определяем родителя объекта
             parent_id = None
             if pd.isna(parent_name):
-                parent_id = (
-                    self.target_object_id
-                )  # Если родитель не указан, используем корневой объект
+                parent_id = self.target_object_id  # Если родитель не указан, используем корневой объект
             else:
                 # Ищем родителя по имени в уже обработанных объектах
                 parent_found = False
@@ -232,15 +222,11 @@ class FixedExcelImporter:
             }
 
             # Добавляем атрибуты из остальных колонок
-            for col_name in self.df.columns[
-                3:
-            ]:  # Пропускаем первые три колонки (Имя, Класс, Родитель)
+            for col_name in self.df.columns[3:]:  # Пропускаем первые три колонки (Имя, Класс, Родитель)
                 value = row[col_name]
                 if not pd.isna(value):
                     obj["attributes"][col_name] = value
-                    logger.debug(
-                        f"Добавлен атрибут '{col_name}' = '{value}' для объекта '{name}'"
-                    )
+                    logger.debug(f"Добавлен атрибут '{col_name}' = '{value}' для объекта '{name}'")
 
             # Добавляем объект в список и словарь
             objects.append(obj)
@@ -257,9 +243,7 @@ class FixedExcelImporter:
 
         return objects
 
-    async def create_objects_in_neosintez(
-        self, objects: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    async def create_objects_in_neosintez(self, objects: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Создает объекты в Neosintez.
 
@@ -269,9 +253,7 @@ class FixedExcelImporter:
         Returns:
             Список созданных объектов с добавленными ID из Neosintez
         """
-        logger.info(
-            f"Начало создания объектов в Neosintez. Всего объектов: {len(objects)}"
-        )
+        logger.info(f"Начало создания объектов в Neosintez. Всего объектов: {len(objects)}")
 
         # Словарь для хранения созданных объектов: временный id -> реальный id в Neosintez
         created_objects = {}
@@ -285,9 +267,7 @@ class FixedExcelImporter:
                 if parent_id in created_objects:
                     parent_id = created_objects[parent_id]
 
-                logger.info(
-                    f"Создание объекта '{obj['name']}' класса '{obj['class_name']}' с родителем {parent_id}"
-                )
+                logger.info(f"Создание объекта '{obj['name']}' класса '{obj['class_name']}' с родителем {parent_id}")
 
                 # Создаем данные для запроса
                 data = {
@@ -305,9 +285,7 @@ class FixedExcelImporter:
 
                 # Вызываем API для создания объекта
                 try:
-                    created_id = await self.client.objects.create(
-                        parent_id=parent_id, data=data
-                    )
+                    created_id = await self.client.objects.create(parent_id=parent_id, data=data)
 
                     # Сохраняем соответствие временного ID и реального ID в Neosintez
                     created_objects[obj["id"]] = created_id
@@ -316,29 +294,21 @@ class FixedExcelImporter:
                     obj["neosintez_id"] = created_id
                     result.append(obj)
 
-                    logger.info(
-                        f"Объект '{obj['name']}' создан успешно. ID: {created_id}"
-                    )
+                    logger.info(f"Объект '{obj['name']}' создан успешно. ID: {created_id}")
 
                     # Устанавливаем атрибуты объекта, если они есть
                     if obj["attributes"]:
                         await self.set_object_attributes(created_id, obj["attributes"])
 
                 except Exception as e:
-                    logger.error(
-                        f"Ошибка при создании объекта '{obj['name']}': {e!s}"
-                    )
+                    logger.error(f"Ошибка при создании объекта '{obj['name']}': {e!s}")
 
             except Exception as e:
-                logger.error(
-                    f"Общая ошибка при обработке объекта '{obj['name']}': {e!s}"
-                )
+                logger.error(f"Общая ошибка при обработке объекта '{obj['name']}': {e!s}")
 
         return result
 
-    async def set_object_attributes(
-        self, object_id: str, attributes: Dict[str, Any]
-    ) -> bool:
+    async def set_object_attributes(self, object_id: str, attributes: Dict[str, Any]) -> bool:
         """
         Устанавливает атрибуты объекта.
 
@@ -377,13 +347,9 @@ class FixedExcelImporter:
                 if attr_id:
                     # Добавляем атрибут в словарь для обновления
                     attributes_data[str(attr_id)] = {"Value": attr_value}
-                    logger.info(
-                        f"Атрибут '{attr_name}' (ID: {attr_id}) будет установлен в '{attr_value}'"
-                    )
+                    logger.info(f"Атрибут '{attr_name}' (ID: {attr_id}) будет установлен в '{attr_value}'")
                 else:
-                    logger.warning(
-                        f"Атрибут '{attr_name}' не найден для класса {entity_id}"
-                    )
+                    logger.warning(f"Атрибут '{attr_name}' не найден для класса {entity_id}")
 
             # Если есть атрибуты для обновления
             if attributes_data:
@@ -397,14 +363,10 @@ class FixedExcelImporter:
                 return True
 
         except Exception as e:
-            logger.error(
-                f"Ошибка при установке атрибутов объекта {object_id}: {e!s}"
-            )
+            logger.error(f"Ошибка при установке атрибутов объекта {object_id}: {e!s}")
             return False
 
-    async def verify_created_objects(
-        self, created_objects: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    async def verify_created_objects(self, created_objects: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Проверяет наличие созданных объектов.
 
@@ -453,9 +415,7 @@ class FixedExcelImporter:
                             "error": str(e),
                         }
                     )
-                    logger.warning(
-                        f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {e!s}"
-                    )
+                    logger.warning(f"Объект не найден: {obj_name} (ID: {obj_id}), ошибка: {e!s}")
             else:
                 verification_results["missing_objects"] += 1
                 verification_results["details"].append(
@@ -473,9 +433,7 @@ class FixedExcelImporter:
             f"Проверка завершена. Найдено: {verification_results['found_objects']} из {verification_results['total_objects']} объектов"
         )
         if verification_results["missing_objects"] > 0:
-            logger.warning(
-                f"Не найдено {verification_results['missing_objects']} объектов"
-            )
+            logger.warning(f"Не найдено {verification_results['missing_objects']} объектов")
 
         return verification_results
 
@@ -555,9 +513,7 @@ class FixedExcelImporter:
 
         # Добавляем результаты верификации, если она была выполнена
         if not test_mode and created_objects:
-            result["verification_results"] = await self.verify_created_objects(
-                created_objects
-            )
+            result["verification_results"] = await self.verify_created_objects(created_objects)
 
         return result
 
@@ -574,9 +530,7 @@ async def main():
         # Определяем режим работы (тестовый или реальный импорт)
         import argparse
 
-        parser = argparse.ArgumentParser(
-            description="Импорт данных из Excel в Neosintez"
-        )
+        parser = argparse.ArgumentParser(description="Импорт данных из Excel в Neosintez")
         parser.add_argument(
             "--test",
             action="store_true",
@@ -608,11 +562,7 @@ async def main():
 
         # Режим работы
         test_mode = args.test
-        mode_str = (
-            "тестовый режим (без создания объектов)"
-            if test_mode
-            else "режим создания объектов"
-        )
+        mode_str = "тестовый режим (без создания объектов)" if test_mode else "режим создания объектов"
 
         logger.info(f"Запуск в режиме: {mode_str}")
 
@@ -635,12 +585,8 @@ async def main():
                 result = await importer.process_import(test_mode=test_mode)
 
                 # Сохраняем результат в файл для анализа
-                result_file = (
-                    "import_test_result.json" if test_mode else "import_result.json"
-                )
-                with open(
-                    os.path.join("data", result_file), "w", encoding="utf-8"
-                ) as f:
+                result_file = "import_test_result.json" if test_mode else "import_result.json"
+                with open(os.path.join("data", result_file), "w", encoding="utf-8") as f:
                     json.dump(result, f, ensure_ascii=False, indent=4, default=str)
 
                 logger.info(f"Импорт завершен. Результат сохранен в data/{result_file}")

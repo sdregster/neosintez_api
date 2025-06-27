@@ -115,8 +115,7 @@ class NeosintezClient:
         """
         if self._session is None or self._session.closed:
             raise RuntimeError(
-                "HTTP сессия не инициализирована. "
-                "Используйте 'async with' контекст или вызовите await client.auth()"
+                "HTTP сессия не инициализирована. Используйте 'async with' контекст или вызовите await client.auth()"
             )
         return self._session
 
@@ -152,9 +151,7 @@ class NeosintezClient:
 
         try:
             # Используем self.session напрямую
-            logger.debug(
-                f"Отправка запроса на авторизацию на URL: {self.settings.base_url}{url}"
-            )
+            logger.debug(f"Отправка запроса на авторизацию на URL: {self.settings.base_url}{url}")
             async with self.session.post(url, data=data, headers=headers) as response:
                 logger.debug(f"Получен ответ с кодом: {response.status}")
                 logger.debug(f"Заголовки ответа: {response.headers}")
@@ -172,17 +169,11 @@ class NeosintezClient:
                     except (json.JSONDecodeError, KeyError) as e:
                         logger.error(f"Ошибка при парсинге ответа: {e!s}")
                         logger.error(f"Текст ответа: {response_text[:200]}...")
-                        raise NeosintezAuthError(
-                            f"Ошибка при парсинге ответа: {e!s}"
-                        )
+                        raise NeosintezAuthError(f"Ошибка при парсинге ответа: {e!s}")
                 else:
                     response_text = await response.text()
-                    logger.error(
-                        f"Ошибка аутентификации: {response.status} - {response_text}"
-                    )
-                    raise NeosintezAuthError(
-                        f"Не удалось авторизоваться. {response.status} - {response_text}"
-                    )
+                    logger.error(f"Ошибка аутентификации: {response.status} - {response_text}")
+                    raise NeosintezAuthError(f"Не удалось авторизоваться. {response.status} - {response_text}")
         except aiohttp.ClientConnectionError as e:
             logger.error(f"Ошибка соединения при аутентификации: {e!s}")
             raise NeosintezConnectionError(f"Ошибка соединения: {e!s}")

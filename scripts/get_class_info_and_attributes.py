@@ -44,9 +44,7 @@ class UUIDEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-async def find_class_by_name(
-    name_pattern: str, case_sensitive: bool = False
-) -> List[EntityClass]:
+async def find_class_by_name(name_pattern: str, case_sensitive: bool = False) -> List[EntityClass]:
     """
     Ищет классы по части имени.
 
@@ -79,9 +77,7 @@ async def find_class_by_name(
                 if search_term in cls_name:
                     matched_classes.append(cls)
 
-            logger.info(
-                f"Найдено {len(matched_classes)} классов, соответствующих запросу '{name_pattern}'"
-            )
+            logger.info(f"Найдено {len(matched_classes)} классов, соответствующих запросу '{name_pattern}'")
             return matched_classes
 
         except Exception as e:
@@ -136,9 +132,7 @@ async def get_class_info_and_attributes(
                 attributes = await client.attributes.get_for_entity(class_id)
                 logger.info(f"Получено {len(attributes)} атрибутов")
             except Exception as e:
-                logger.warning(
-                    f"Не удалось получить атрибуты стандартным методом: {e!s}"
-                )
+                logger.warning(f"Не удалось получить атрибуты стандартным методом: {e!s}")
                 attributes = []
 
             # Если не удалось получить атрибуты стандартным методом, пробуем получить через поиск
@@ -150,30 +144,20 @@ async def get_class_info_and_attributes(
                 # Фильтруем атрибуты по EntityId
                 filtered_attributes = []
                 for attr in all_attributes:
-                    if (
-                        hasattr(attr, "EntityId")
-                        and attr.EntityId
-                        and str(attr.EntityId) == class_id
-                    ):
+                    if hasattr(attr, "EntityId") and attr.EntityId and str(attr.EntityId) == class_id:
                         filtered_attributes.append(attr)
 
-                logger.info(
-                    f"Отфильтровано {len(filtered_attributes)} атрибутов для класса {class_info.Name}"
-                )
+                logger.info(f"Отфильтровано {len(filtered_attributes)} атрибутов для класса {class_info.Name}")
                 attributes = filtered_attributes
 
             return class_info, attributes
 
         except Exception as e:
-            logger.error(
-                f"Ошибка при получении информации о классе и атрибутах: {e!s}"
-            )
+            logger.error(f"Ошибка при получении информации о классе и атрибутах: {e!s}")
             return None, []
 
 
-async def save_class_info_to_file(
-    class_info: EntityClass, attributes: List[Attribute]
-) -> bool:
+async def save_class_info_to_file(class_info: EntityClass, attributes: List[Attribute]) -> bool:
     """
     Сохраняет информацию о классе и его атрибутах в JSON-файл.
 
@@ -219,9 +203,7 @@ async def save_class_info_to_file(
             attr_dict["validation_rule"] = attr.ValidationRule
 
         if hasattr(attr, "Items") and attr.Items:
-            attr_dict["items"] = [
-                {"id": str(item.Id), "name": item.Name} for item in attr.Items
-            ]
+            attr_dict["items"] = [{"id": str(item.Id), "name": item.Name} for item in attr.Items]
 
         result["attributes"].append(attr_dict)
 
@@ -236,9 +218,7 @@ async def save_class_info_to_file(
 
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
-        logger.info(
-            f"Информация о классе '{class_info.Name}' сохранена в {output_file}"
-        )
+        logger.info(f"Информация о классе '{class_info.Name}' сохранена в {output_file}")
 
         return True
     except Exception as e:
@@ -252,15 +232,11 @@ async def main():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Получение информации о классе и его атрибутах"
-    )
+    parser = argparse.ArgumentParser(description="Получение информации о классе и его атрибутах")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--id", type=str, help="ID класса")
     group.add_argument("--search", type=str, help="Поиск класса по имени")
-    parser.add_argument(
-        "--case-sensitive", action="store_true", help="Учитывать регистр при поиске"
-    )
+    parser.add_argument("--case-sensitive", action="store_true", help="Учитывать регистр при поиске")
     args = parser.parse_args()
 
     if args.search:
@@ -272,9 +248,7 @@ async def main():
             return 1
 
         # Выводим список найденных классов
-        print(
-            f"\nНайдено {len(matched_classes)} классов, содержащих '{args.search}':\n"
-        )
+        print(f"\nНайдено {len(matched_classes)} классов, содержащих '{args.search}':\n")
         for i, cls in enumerate(matched_classes, 1):
             print(f"{i}. {cls.Name} (ID: {cls.Id})")
             if cls.Description:
@@ -289,9 +263,7 @@ async def main():
             # Иначе предлагаем выбрать класс из списка
             while True:
                 try:
-                    choice = input(
-                        "Выберите номер класса для получения его атрибутов (или 'q' для выхода): "
-                    )
+                    choice = input("Выберите номер класса для получения его атрибутов (или 'q' для выхода): ")
                     if choice.lower() == "q":
                         return 0
 
@@ -300,9 +272,7 @@ async def main():
                         class_id = str(matched_classes[choice_idx].Id)
                         break
                     else:
-                        print(
-                            f"Пожалуйста, введите число от 1 до {len(matched_classes)}"
-                        )
+                        print(f"Пожалуйста, введите число от 1 до {len(matched_classes)}")
                 except ValueError:
                     print("Пожалуйста, введите число или 'q' для выхода")
     else:

@@ -101,16 +101,12 @@ async def get_entity_meta(
         # Ищем нужный класс по имени или ID
         target_class = None
         for cls in all_classes_with_attrs:
-            if (class_name and cls.get("Name") == class_name) or (
-                class_id and str(cls.get("Id")) == str(class_id)
-            ):
+            if (class_name and cls.get("Name") == class_name) or (class_id and str(cls.get("Id")) == str(class_id)):
                 target_class = cls
                 break
 
         if not target_class:
-            logger.warning(
-                f"Класс '{cache_key}' не найден в списке классов с атрибутами"
-            )
+            logger.warning(f"Класс '{cache_key}' не найден в списке классов с атрибутами")
             # Пробуем стандартный метод
             logger.info("Пробуем получить классы стандартным методом...")
             classes = await client.classes.get_all()
@@ -118,40 +114,28 @@ async def get_entity_meta(
 
             # Ищем нужный класс по имени или ID
             for cls in classes:
-                if (class_name and cls.Name == class_name) or (
-                    class_id and str(cls.Id) == str(class_id)
-                ):
+                if (class_name and cls.Name == class_name) or (class_id and str(cls.Id) == str(class_id)):
                     target_class_obj = cls
                     target_class = target_class_obj.model_dump()
                     break
 
             if not target_class:
                 search_term = class_name if class_name else f"с ID {class_id}"
-                raise ValueError(
-                    f"Класс {search_term} не найден в списке классов API Neosintez"
-                )
+                raise ValueError(f"Класс {search_term} не найден в списке классов API Neosintez")
 
-            logger.info(
-                f"Найден класс '{target_class['Name']}' (ID: {target_class['Id']})"
-            )
+            logger.info(f"Найден класс '{target_class['Name']}' (ID: {target_class['Id']})")
 
             # Получаем атрибуты отдельно
             attributes = await client.classes.get_attributes(target_class["Id"])
-            logger.info(
-                f"Получено {len(attributes)} атрибутов для класса '{target_class['Name']}'"
-            )
+            logger.info(f"Получено {len(attributes)} атрибутов для класса '{target_class['Name']}'")
 
             if len(attributes) == 0:
-                logger.warning(
-                    f"Внимание: класс '{target_class['Name']}' не имеет атрибутов!"
-                )
+                logger.warning(f"Внимание: класс '{target_class['Name']}' не имеет атрибутов!")
 
             # Собираем информацию в словарь
             target_class["Attributes"] = [attr.model_dump() for attr in attributes]
         else:
-            logger.info(
-                f"Найден класс '{target_class['Name']}' (ID: {target_class['Id']}) с атрибутами"
-            )
+            logger.info(f"Найден класс '{target_class['Name']}' (ID: {target_class['Id']}) с атрибутами")
 
             # Превращаем атрибуты из словаря {id: data} в список атрибутов для совместимости
             attributes_list = []
@@ -174,17 +158,13 @@ async def get_entity_meta(
                             # Добавляем в список атрибутов
                             attributes_list.append(attr_dict)
                         except Exception as e:
-                            logger.error(
-                                f"Ошибка при обработке атрибута {attr_id}: {e!s}"
-                            )
+                            logger.error(f"Ошибка при обработке атрибута {attr_id}: {e!s}")
                 elif isinstance(target_class["Attributes"], list):
                     # Если атрибуты уже в формате списка
                     attributes_list = target_class["Attributes"]
 
             target_class["Attributes"] = attributes_list
-            logger.info(
-                f"Обработано {len(attributes_list)} атрибутов для класса '{target_class['Name']}'"
-            )
+            logger.info(f"Обработано {len(attributes_list)} атрибутов для класса '{target_class['Name']}'")
 
         # Сохраняем класс в кэше
         ENTITY_CACHE[cache_key] = target_class
@@ -249,9 +229,7 @@ def build_attribute_body(attr_meta: Dict[str, Any], value: Any) -> Dict[str, Any
 # ────────────────────────────
 #  3. Основная процедура создания объекта
 # ────────────────────────────
-async def create_object_from_model(
-    client: NeosintezClient, model: BaseModel, parent_id: str
-) -> str:
+async def create_object_from_model(client: NeosintezClient, model: BaseModel, parent_id: str) -> str:
     """
     Создает объект в Неосинтезе на основе Pydantic-модели.
 
@@ -306,14 +284,10 @@ async def create_object_from_model(
         raise ValueError(f"Класс '{class_name}' не найден в API")
 
     # Получаем ID класса
-    class_id = (
-        target_class.get("Id") if isinstance(target_class, dict) else target_class.Id
-    )
+    class_id = target_class.get("Id") if isinstance(target_class, dict) else target_class.Id
 
     # Создаем объект
-    logger.info(
-        f"Создание объекта '{object_name}' класса '{class_name}' в родителе {parent_id}"
-    )
+    logger.info(f"Создание объекта '{object_name}' класса '{class_name}' в родителе {parent_id}")
     object_data = {"Name": object_name, "Entity": {"Id": class_id, "Name": class_name}}
     object_id = await client.objects.create(parent_id, object_data)
 
@@ -327,9 +301,7 @@ async def create_object_from_model(
     attr_by_name = {}
 
     # Получаем атрибуты класса
-    class_attributes = (
-        target_class.get("Attributes", []) if isinstance(target_class, dict) else []
-    )
+    class_attributes = target_class.get("Attributes", []) if isinstance(target_class, dict) else []
 
     # Создаем словарь атрибутов по имени
     for attr in class_attributes:
@@ -365,9 +337,7 @@ async def create_object_from_model(
     if attributes:
         logger.info(f"Установка {len(attributes)} атрибутов для объекта {object_id}")
         # Отладочный вывод для анализа запроса
-        logger.debug(
-            f"Запрос на установку атрибутов: {json.dumps(attributes, ensure_ascii=False, indent=2)}"
-        )
+        logger.debug(f"Запрос на установку атрибутов: {json.dumps(attributes, ensure_ascii=False, indent=2)}")
 
         try:
             await client.objects.set_attributes(object_id, attributes)
@@ -380,9 +350,7 @@ async def create_object_from_model(
 # ────────────────────────────
 #  4. Получение модели из объекта
 # ────────────────────────────
-async def read_object_to_model(
-    client: NeosintezClient, object_id: str, model_class: Type[T]
-) -> T:
+async def read_object_to_model(client: NeosintezClient, object_id: str, model_class: Type[T]) -> T:
     """
     Создаёт экземпляр модели на основе данных объекта из Neosintez
 
@@ -436,29 +404,21 @@ async def read_object_to_model(
                 attr_name = attr_meta["Name"]
 
                 # Извлекаем значение атрибута
-                attr_value = (
-                    attr_data.get("Value") if isinstance(attr_data, dict) else attr_data
-                )
+                attr_value = attr_data.get("Value") if isinstance(attr_data, dict) else attr_data
                 logger.debug(f"Обрабатываем атрибут {attr_name}={attr_value}")
 
                 # Сопоставляем с полями модели
                 for field_name, field in model_class.__annotations__.items():
                     # Проверяем как обычное имя поля, так и alias
                     field_info = model_class.model_fields.get(field_name)
-                    field_alias = (
-                        field_info.alias
-                        if field_info and field_info.alias
-                        else field_name
-                    )
+                    field_alias = field_info.alias if field_info and field_info.alias else field_name
 
                     if field_name == attr_name or field_alias == attr_name:
                         model_data[field_name] = attr_value
                         logger.info(f"Установлено поле {field_name}={attr_value}")
                         break
                 else:
-                    logger.debug(
-                        f"Атрибут '{attr_name}' не соответствует ни одному полю модели"
-                    )
+                    logger.debug(f"Атрибут '{attr_name}' не соответствует ни одному полю модели")
             else:
                 logger.warning(f"Не найдены метаданные для атрибута с ID {attr_id}")
     else:
@@ -498,25 +458,17 @@ async def main():
                 logger.info(f"Используем родительский объект: {parent_id}")
 
                 # 1) Создаем исходную модель объекта
-                original_instance = SomeRandomModel(
-                    Name="Тестовая МВЗ-папка", МВЗ="0001"
-                )
-                logger.info(
-                    f"Подготовлена модель {original_instance.__class__.__name__}: {original_instance.Name}"
-                )
+                original_instance = SomeRandomModel(Name="Тестовая МВЗ-папка", МВЗ="0001")
+                logger.info(f"Подготовлена модель {original_instance.__class__.__name__}: {original_instance.Name}")
 
                 # 2) Создаем объект в Неосинтезе
                 logger.info("Начинаем процесс создания объекта...")
-                object_id = await create_object_from_model(
-                    client, original_instance, parent_id
-                )
+                object_id = await create_object_from_model(client, original_instance, parent_id)
                 logger.info(f"✓ Объект успешно создан: {object_id}")
 
                 # 3) Получаем данные объекта из Неосинтеза и создаем модель
                 logger.info("Получаем данные объекта и восстанавливаем модель...")
-                restored_instance = await read_object_to_model(
-                    client, object_id, SomeRandomModel
-                )
+                restored_instance = await read_object_to_model(client, object_id, SomeRandomModel)
                 logger.info(f"✓ Модель восстановлена из объекта: {restored_instance}")
 
                 # 4) Сравниваем исходную модель и восстановленную
@@ -557,19 +509,13 @@ if __name__ == "__main__":
 
         # Проверяем результат
         if object_id and is_equal:
-            logger.info(
-                f"Скрипт успешно выполнен. Объект с ID: {object_id} создан и восстановлен в модель."
-            )
+            logger.info(f"Скрипт успешно выполнен. Объект с ID: {object_id} создан и восстановлен в модель.")
             sys.exit(0)
         elif object_id:
-            logger.warning(
-                f"Скрипт выполнен частично. Объект создан (ID: {object_id}), но модели отличаются."
-            )
+            logger.warning(f"Скрипт выполнен частично. Объект создан (ID: {object_id}), но модели отличаются.")
             sys.exit(1)
         else:
-            logger.error(
-                "Скрипт выполнен с ошибкой. Объект не был создан или не был восстановлен."
-            )
+            logger.error("Скрипт выполнен с ошибкой. Объект не был создан или не был восстановлен.")
             sys.exit(2)
     except KeyboardInterrupt:
         logger.info("Прервано пользователем")

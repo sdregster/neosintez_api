@@ -96,9 +96,7 @@ async def get_all_classes(save_to_file: bool = True) -> Dict[str, Any]:
                 output_file = output_dir / "all_classes.json"
                 with open(output_file, "w", encoding="utf-8") as f:
                     json.dump(result, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
-                logger.info(
-                    f"Информация о {len(classes_list)} классах сохранена в {output_file}"
-                )
+                logger.info(f"Информация о {len(classes_list)} классах сохранена в {output_file}")
 
             return result
 
@@ -112,9 +110,7 @@ async def get_all_classes(save_to_file: bool = True) -> Dict[str, Any]:
     return result
 
 
-async def search_class_by_name(
-    name_pattern: str, case_sensitive: bool = False
-) -> List[Dict[str, Any]]:
+async def search_class_by_name(name_pattern: str, case_sensitive: bool = False) -> List[Dict[str, Any]]:
     """
     Поиск классов по имени.
 
@@ -145,23 +141,15 @@ async def main():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Получение информации о классах объектов в Neosintez"
-    )
+    parser = argparse.ArgumentParser(description="Получение информации о классах объектов в Neosintez")
     parser.add_argument("--search", type=str, help="Поиск класса по части имени")
-    parser.add_argument(
-        "--case-sensitive", action="store_true", help="Учитывать регистр при поиске"
-    )
-    parser.add_argument(
-        "--no-save", action="store_true", help="Не сохранять результаты в файл"
-    )
+    parser.add_argument("--case-sensitive", action="store_true", help="Учитывать регистр при поиске")
+    parser.add_argument("--no-save", action="store_true", help="Не сохранять результаты в файл")
     args = parser.parse_args()
 
     # Если указан параметр поиска, ищем классы по имени
     if args.search:
-        matched_classes = await search_class_by_name(
-            name_pattern=args.search, case_sensitive=args.case_sensitive
-        )
+        matched_classes = await search_class_by_name(name_pattern=args.search, case_sensitive=args.case_sensitive)
 
         # Выводим найденные классы
         if matched_classes:

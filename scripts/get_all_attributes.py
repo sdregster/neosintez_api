@@ -84,9 +84,7 @@ async def get_all_attributes(save_to_file: bool = True) -> Dict[str, Any]:
                     "required": getattr(attr, "Required", False),
                     "description": getattr(attr, "Description", ""),
                     "is_collection": getattr(attr, "IsCollection", False),
-                    "entity_id": str(attr.EntityId)
-                    if hasattr(attr, "EntityId") and attr.EntityId
-                    else None,
+                    "entity_id": str(attr.EntityId) if hasattr(attr, "EntityId") and attr.EntityId else None,
                 }
 
                 # Добавляем дополнительные поля в зависимости от типа атрибута
@@ -97,9 +95,7 @@ async def get_all_attributes(save_to_file: bool = True) -> Dict[str, Any]:
                     attr_dict["validation_rule"] = attr.ValidationRule
 
                 if hasattr(attr, "Items") and attr.Items:
-                    attr_dict["items"] = [
-                        {"id": str(item.Id), "name": item.Name} for item in attr.Items
-                    ]
+                    attr_dict["items"] = [{"id": str(item.Id), "name": item.Name} for item in attr.Items]
 
                 attributes_list.append(attr_dict)
 
@@ -115,9 +111,7 @@ async def get_all_attributes(save_to_file: bool = True) -> Dict[str, Any]:
                 output_file = output_dir / "all_attributes.json"
                 with open(output_file, "w", encoding="utf-8") as f:
                     json.dump(result, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
-                logger.info(
-                    f"Информация о {len(attributes_list)} атрибутах сохранена в {output_file}"
-                )
+                logger.info(f"Информация о {len(attributes_list)} атрибутах сохранена в {output_file}")
 
             return result
 
@@ -149,9 +143,7 @@ async def filter_attributes_by_entity(entity_id: str) -> List[Dict[str, Any]]:
         if attr.get("entity_id") == entity_id:
             filtered_attributes.append(attr)
 
-    logger.info(
-        f"Найдено {len(filtered_attributes)} атрибутов для сущности {entity_id}"
-    )
+    logger.info(f"Найдено {len(filtered_attributes)} атрибутов для сущности {entity_id}")
     return filtered_attributes
 
 
@@ -161,15 +153,9 @@ async def main():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Получение информации об атрибутах в Neosintez"
-    )
-    parser.add_argument(
-        "--entity-id", type=str, help="ID сущности/класса для фильтрации атрибутов"
-    )
-    parser.add_argument(
-        "--no-save", action="store_true", help="Не сохранять результаты в файл"
-    )
+    parser = argparse.ArgumentParser(description="Получение информации об атрибутах в Neosintez")
+    parser.add_argument("--entity-id", type=str, help="ID сущности/класса для фильтрации атрибутов")
+    parser.add_argument("--no-save", action="store_true", help="Не сохранять результаты в файл")
     args = parser.parse_args()
 
     # Если указан ID сущности, фильтруем атрибуты
@@ -224,9 +210,7 @@ async def main():
                     indent=2,
                     cls=UUIDEncoder,
                 )
-            logger.info(
-                f"Информация об атрибутах класса '{class_name}' сохранена в {output_file}"
-            )
+            logger.info(f"Информация об атрибутах класса '{class_name}' сохранена в {output_file}")
 
     # Иначе получаем все атрибуты
     else:

@@ -68,9 +68,7 @@ def main():
     # Примеры данных
     print("\n=== Примеры данных из Excel ===")
     for i, sample in enumerate(excel_info.get("data_sample", [])):
-        print(
-            f"Строка {i}: Уровень={sample.get('level')}, Класс={sample.get('class')}, Имя={sample.get('name')}"
-        )
+        print(f"Строка {i}: Уровень={sample.get('level')}, Класс={sample.get('class')}, Имя={sample.get('name')}")
 
     # Информация об иерархии объектов
     print("\n=== Иерархия объектов ===")

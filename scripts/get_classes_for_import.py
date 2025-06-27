@@ -98,9 +98,7 @@ async def get_all_classes() -> Dict[str, Any]:
     return result
 
 
-async def get_class_attributes(
-    client: NeosintezClient, class_id: str
-) -> List[Dict[str, Any]]:
+async def get_class_attributes(client: NeosintezClient, class_id: str) -> List[Dict[str, Any]]:
     """
     Получает атрибуты класса из Neosintez.
 
@@ -122,9 +120,7 @@ async def get_class_attributes(
             # Определение типа атрибута
             attr_type = ""
             if hasattr(attr, "Type") and attr.Type:
-                attr_type = (
-                    attr.Type.Name if hasattr(attr.Type, "Name") else str(attr.Type)
-                )
+                attr_type = attr.Type.Name if hasattr(attr.Type, "Name") else str(attr.Type)
 
             attr_dict = {
                 "id": str(attr.Id),
@@ -137,9 +133,7 @@ async def get_class_attributes(
 
             # Добавляем доп. информацию для атрибутов-ссылок
             if hasattr(attr, "Items") and attr.Items:
-                attr_dict["items"] = [
-                    {"id": str(item.Id), "name": item.Name} for item in attr.Items
-                ]
+                attr_dict["items"] = [{"id": str(item.Id), "name": item.Name} for item in attr.Items]
 
             attributes_list.append(attr_dict)
 
@@ -152,9 +146,7 @@ async def get_class_attributes(
         return []
 
 
-async def select_diverse_classes(
-    classes_list: List[Dict[str, Any]], count: int = 3
-) -> List[Dict[str, Any]]:
+async def select_diverse_classes(classes_list: List[Dict[str, Any]], count: int = 3) -> List[Dict[str, Any]]:
     """
     Выбирает несколько разнообразных классов из списка.
 
@@ -195,9 +187,7 @@ async def select_diverse_classes(
             if keyword in cls_name_lower and keyword not in found_keywords:
                 selected_classes.append(cls)
                 found_keywords.add(keyword)
-                logger.info(
-                    f"Выбран класс по ключевому слову '{keyword}': {cls['name']}"
-                )
+                logger.info(f"Выбран класс по ключевому слову '{keyword}': {cls['name']}")
                 break
 
     # Если не нашли достаточно классов по ключевым словам, добавляем другие
@@ -249,9 +239,7 @@ async def get_classes_with_attributes(save_to_file: bool = True) -> Dict[str, An
             return result
 
         # Выбираем 3 разнообразных класса
-        selected_classes = await select_diverse_classes(
-            all_classes_info["classes"], count=3
-        )
+        selected_classes = await select_diverse_classes(all_classes_info["classes"], count=3)
 
         # Инициализация клиента API
         async with NeosintezClient(settings) as client:
@@ -284,9 +272,7 @@ async def get_classes_with_attributes(save_to_file: bool = True) -> Dict[str, An
 
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
-            logger.info(
-                f"Информация о {len(result['classes'])} классах сохранена в {output_file}"
-            )
+            logger.info(f"Информация о {len(result['classes'])} классах сохранена в {output_file}")
 
         return result
 
@@ -305,12 +291,8 @@ async def main():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Получение информации о классах объектов для импорта"
-    )
-    parser.add_argument(
-        "--no-save", action="store_true", help="Не сохранять результаты в файл"
-    )
+    parser = argparse.ArgumentParser(description="Получение информации о классах объектов для импорта")
+    parser.add_argument("--no-save", action="store_true", help="Не сохранять результаты в файл")
     args = parser.parse_args()
 
     # Получаем информацию о классах и их атрибутах

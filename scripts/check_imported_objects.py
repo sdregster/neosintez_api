@@ -85,12 +85,9 @@ async def check_objects(object_id: str, deep: bool = False) -> Dict[str, Any]:
                         {
                             "id": str(child.Id),
                             "name": child.Name,
-                            "entity_id": str(child.EntityId)
-                            if hasattr(child, "EntityId")
-                            else None,
+                            "entity_id": str(child.EntityId) if hasattr(child, "EntityId") else None,
                             "entity_name": child.Entity.Name
-                            if hasattr(child, "Entity")
-                            and hasattr(child.Entity, "Name")
+                            if hasattr(child, "Entity") and hasattr(child.Entity, "Name")
                             else None,
                         }
                         for child in children
@@ -124,9 +121,7 @@ async def main():
         default="a7928b22-5a25-f011-91dd-005056b6948b",
         help="ID объекта для проверки",
     )
-    parser.add_argument(
-        "--deep", action="store_true", help="Выполнить глубокую проверку иерархии"
-    )
+    parser.add_argument("--deep", action="store_true", help="Выполнить глубокую проверку иерархии")
     parser.add_argument(
         "--output",
         default="object_check.json",

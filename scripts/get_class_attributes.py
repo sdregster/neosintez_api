@@ -110,9 +110,7 @@ async def get_class_attributes(class_id: str) -> Dict[str, Any]:
                     attr_dict["validation_rule"] = attr.ValidationRule
 
                 if hasattr(attr, "Items") and attr.Items:
-                    attr_dict["items"] = [
-                        {"id": str(item.Id), "name": item.Name} for item in attr.Items
-                    ]
+                    attr_dict["items"] = [{"id": str(item.Id), "name": item.Name} for item in attr.Items]
 
                 attributes_list.append(attr_dict)
 
@@ -130,9 +128,7 @@ async def get_class_attributes(class_id: str) -> Dict[str, Any]:
 
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2, cls=UUIDEncoder)
-            logger.info(
-                f"Атрибуты класса '{result['class_name']}' сохранены в {output_file}"
-            )
+            logger.info(f"Атрибуты класса '{result['class_name']}' сохранены в {output_file}")
 
             return result
 
@@ -157,9 +153,7 @@ async def print_attributes_info(result: Dict[str, Any]) -> None:
         print("Информация о классе не найдена")
         return
 
-    print(
-        f"\nАтрибуты класса: {result['class_name']} (всего: {result['attributes_count']})\n"
-    )
+    print(f"\nАтрибуты класса: {result['class_name']} (всего: {result['attributes_count']})\n")
 
     # Типы атрибутов в виде словаря для перевода
     attr_types = {
@@ -205,13 +199,9 @@ async def main():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Получение информации об атрибутах класса в Neosintez"
-    )
+    parser = argparse.ArgumentParser(description="Получение информации об атрибутах класса в Neosintez")
     parser.add_argument("class_id", help="ID класса (UUID)")
-    parser.add_argument(
-        "--quiet", "-q", action="store_true", help="Не выводить информацию в консоль"
-    )
+    parser.add_argument("--quiet", "-q", action="store_true", help="Не выводить информацию в консоль")
     args = parser.parse_args()
 
     # Проверяем формат UUID

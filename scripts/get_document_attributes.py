@@ -40,9 +40,7 @@ class UUIDEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-async def get_class_attributes(
-    class_name: str, save_to_file: bool = True
-) -> Dict[str, Any]:
+async def get_class_attributes(class_name: str, save_to_file: bool = True) -> Dict[str, Any]:
     """
     Получает атрибуты указанного класса объектов в Neosintez.
 
@@ -94,9 +92,7 @@ async def get_class_attributes(
                         entity_class = entity
                         result["found"] = True
                         result["class_id"] = str(entity.Id)
-                        result["class_name"] = (
-                            entity.Name
-                        )  # Используем точное имя класса
+                        result["class_name"] = entity.Name  # Используем точное имя класса
                         logger.info(
                             f"Найдено частичное совпадение для '{class_name}': '{entity.Name}' (ID: {entity.Id})"
                         )
@@ -124,9 +120,7 @@ async def get_class_attributes(
                     "description": getattr(attr, "Description", ""),
                 }
                 attributes_list.append(attr_dict)
-                logger.info(
-                    f"Атрибут: {attr.Name} (ID: {attr.Id}, тип: {getattr(attr, 'ClrType', 'Unknown')})"
-                )
+                logger.info(f"Атрибут: {attr.Name} (ID: {attr.Id}, тип: {getattr(attr, 'ClrType', 'Unknown')})")
 
             result["attributes"] = attributes_list
 
@@ -158,29 +152,21 @@ async def main():
     """
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Получение атрибутов класса объектов из Neosintez"
-    )
+    parser = argparse.ArgumentParser(description="Получение атрибутов класса объектов из Neosintez")
     parser.add_argument(
         "--class-name",
         default="Документ",
         help="Имя класса объектов (по умолчанию: 'Документ')",
     )
-    parser.add_argument(
-        "--no-save", action="store_true", help="Не сохранять результаты в файл"
-    )
+    parser.add_argument("--no-save", action="store_true", help="Не сохранять результаты в файл")
     args = parser.parse_args()
 
     # Получаем атрибуты класса
-    result = await get_class_attributes(
-        class_name=args.class_name, save_to_file=not args.no_save
-    )
+    result = await get_class_attributes(class_name=args.class_name, save_to_file=not args.no_save)
 
     # Выводим результаты в консоль
     if result["found"]:
-        print(
-            f"\nРезультаты для класса '{result['class_name']}' (ID: {result['class_id']}):"
-        )
+        print(f"\nРезультаты для класса '{result['class_name']}' (ID: {result['class_id']}):")
         print(f"Найдено {len(result['attributes'])} атрибутов:\n")
 
         for idx, attr in enumerate(result["attributes"], 1):

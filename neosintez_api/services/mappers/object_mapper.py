@@ -16,9 +16,7 @@ logger = logging.getLogger("neosintez_api.services.mappers.object_mapper")
 
 class ObjectMapper:
     @staticmethod
-    async def model_to_attributes(
-        model: BaseModel, attr_meta_by_name: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+    async def model_to_attributes(model: BaseModel, attr_meta_by_name: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Преобразует модель в список атрибутов для API.
 
@@ -38,11 +36,7 @@ class ObjectMapper:
 
             if attr_name in attr_meta_by_name:
                 attr_meta = attr_meta_by_name[attr_name]
-                attr_id = (
-                    attr_meta.get("Id")
-                    if isinstance(attr_meta, dict)
-                    else getattr(attr_meta, "Id", None)
-                )
+                attr_id = attr_meta.get("Id") if isinstance(attr_meta, dict) else getattr(attr_meta, "Id", None)
 
                 if attr_id:
                     # Конвертируем UUID в строку если необходимо
@@ -79,11 +73,7 @@ class ObjectMapper:
         # Обрабатываем атрибуты из объекта API
         if object_data.get("Attributes"):
             for attr_id, attr_data in object_data["Attributes"].items():
-                if (
-                    isinstance(attr_data, dict)
-                    and "Name" in attr_data
-                    and "Value" in attr_data
-                ):
+                if isinstance(attr_data, dict) and "Name" in attr_data and "Value" in attr_data:
                     attr_name = attr_data["Name"]
                     attr_value = attr_data["Value"]
 
@@ -93,9 +83,7 @@ class ObjectMapper:
                             if field_info.alias == attr_name or field_name == attr_name:
                                 model_data[field_name] = attr_value
                                 if logger.isEnabledFor(logging.DEBUG):
-                                    logger.debug(
-                                        f"Установлено поле {field_name}={attr_value}"
-                                    )
+                                    logger.debug(f"Установлено поле {field_name}={attr_value}")
                                 break
 
         return model_class(**model_data)

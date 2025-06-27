@@ -13,9 +13,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 # Путь к директории проекта
-PROJECT_DIR = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Путь к файлу swagger.json
 SWAGGER_PATH = os.path.join(PROJECT_DIR, "neosintez_api", "swagger.json")
 # Путь к директории для генерируемых моделей
@@ -162,9 +160,7 @@ def analyze_schema_dependencies(schemas: Dict[str, Any]) -> Dict[str, Set[str]]:
     return dependencies
 
 
-def sort_schemas_by_dependencies(
-    schemas: Dict[str, Any], dependencies: Dict[str, Set[str]]
-) -> List[str]:
+def sort_schemas_by_dependencies(schemas: Dict[str, Any], dependencies: Dict[str, Set[str]]) -> List[str]:
     """
     Сортирует схемы по зависимостям для правильного порядка генерации.
 
@@ -274,9 +270,7 @@ def generate_field_definition(
         field_options.append(f'pattern=r"{pattern}"')
     if "enum" in field_schema:
         enum_values = field_schema["enum"]
-        enum_vals_str = ", ".join(
-            f'"{v}"' if isinstance(v, str) else str(v) for v in enum_values
-        )
+        enum_vals_str = ", ".join(f'"{v}"' if isinstance(v, str) else str(v) for v in enum_values)
         validators.append(
             f'@field_validator("{name}")\n    @classmethod\n    def validate_{snake_case(name)}(cls, v):\n        if v is not None and v not in [{enum_vals_str}]:\n            raise ValueError(f"{{v}} не является допустимым значением")\n        return v'
         )
@@ -327,9 +321,7 @@ def generate_model(name: str, schema: Dict[str, Any]) -> Tuple[str, List[str]]:
     # Обрабатываем свойства схемы
     properties = schema.get("properties", {})
     for field_name, field_schema in properties.items():
-        field_str, field_imports, field_validators = generate_field_definition(
-            field_name, field_schema, required
-        )
+        field_str, field_imports, field_validators = generate_field_definition(field_name, field_schema, required)
         fields.append(f"    {field_str}")
         imports.extend(field_imports)
         validators.extend(field_validators)
