@@ -247,7 +247,9 @@ class HierarchicalExcelImporter:
                             # Находим родителя среди созданных объектов предыдущего уровня
                             current_parent_id = self._find_parent_id(obj_data, created_objects, level)
 
-                        logger.info(f"Создание объекта '{obj_data['name']}' (уровень {level}) с родителем {current_parent_id}")
+                        logger.info(
+                            f"Создание объекта '{obj_data['name']}' (уровень {level}) с родителем {current_parent_id}"
+                        )
 
                         # Создаем объект
                         object_id = await self._create_object_with_attributes(

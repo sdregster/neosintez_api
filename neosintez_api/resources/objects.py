@@ -69,13 +69,13 @@ class ObjectsResource(BaseResource):
         """
         try:
             logger.debug(f"Отправка запроса на создание объекта: {data}")
-            
+
             # Добавляем parent_id как query параметр, если он указан
             params = {}
             if parent_id:
                 params["parent"] = str(parent_id)
                 logger.debug(f"Создание объекта с родителем: {parent_id}")
-            
+
             response = await self._request("POST", "api/objects", data=data, params=params)
             return response
         except Exception as e:
