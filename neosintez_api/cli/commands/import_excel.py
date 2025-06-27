@@ -102,7 +102,14 @@ def hierarchy(file_path, parent_id, sheet_name, preview, dry_run):
                 preview_table.add_column("Количество объектов", style="green")
                 preview_table.add_column("Примеры объектов", style="yellow")
 
-                for level, objects in preview_result.objects_by_level.items():
+                objects_by_level = {}
+                for obj in preview_result.objects_to_create:
+                    level = obj['level']
+                    if level not in objects_by_level:
+                        objects_by_level[level] = []
+                    objects_by_level[level].append(obj)
+
+                for level, objects in sorted(objects_by_level.items()):
                     examples = ", ".join([obj["name"] for obj in objects[:3]])
                     if len(objects) > 3:
                         examples += f" (и еще {len(objects) - 3})"

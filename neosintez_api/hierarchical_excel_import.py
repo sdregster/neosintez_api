@@ -11,6 +11,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 from .core.client import NeosintezClient
+from .core.enums import WioAttributeType
 from .exceptions import ApiError
 from .services.object_service import ObjectService
 
@@ -34,7 +35,7 @@ class ImportPreview(BaseModel):
     """Предварительный просмотр импорта"""
 
     structure: ExcelStructure
-    objects_by_level: Dict[int, List[Dict[str, Any]]]
+    objects_to_create: List[Dict[str, Any]]
     estimated_objects: int
     validation_errors: List[str]
 
@@ -127,9 +128,12 @@ class HierarchicalExcelImporter:
             # Определяем колонки атрибутов (все остальные)
             used_columns = {level_column, class_column, name_column}
             attribute_columns = {}
+            name_columns_lower = [name.lower() for name in self.NAME_COLUMN_NAMES]
+
             for i in range(len(headers)):
-                if i not in used_columns:
-                    header_value = str(headers[i]).strip()
+                header_value = str(headers[i]).strip()
+                # Исключаем любые колонки, похожие на имя, из атрибутов
+                if i not in used_columns and header_value.lower() not in name_columns_lower:
                     if header_value != "" and header_value.lower() not in ["nan", "none"]:
                         attribute_columns[i] = header_value
 
@@ -182,17 +186,17 @@ class HierarchicalExcelImporter:
         structure = await self.analyze_structure(excel_path, worksheet_name)
 
         # Загружаем данные
-        objects_by_level = await self._load_objects_by_level(excel_path, structure, worksheet_name)
+        objects_to_create = await self._load_objects_sequentially(excel_path, structure, worksheet_name)
 
         # Подсчитываем объекты
-        estimated_objects = sum(len(objects) for objects in objects_by_level.values())
+        estimated_objects = len(objects_to_create)
 
         # Проверяем валидность
-        validation_errors = await self._validate_objects(objects_by_level)
+        validation_errors = await self._validate_objects(objects_to_create)
 
         return ImportPreview(
             structure=structure,
-            objects_by_level=objects_by_level,
+            objects_to_create=objects_to_create,
             estimated_objects=estimated_objects,
             validation_errors=validation_errors,
         )
@@ -228,55 +232,56 @@ class HierarchicalExcelImporter:
                     duration_seconds=(datetime.now() - start_time).total_seconds(),
                 )
 
-            # Создаем объекты уровень за уровнем
+            # Создаем объекты последовательно
             created_objects = []
-            created_by_level = {}
+            created_by_level: Dict[int, int] = {}
             errors = []
+            last_parent_at_level: Dict[int, str] = {}
 
-            for level in sorted(preview.objects_by_level.keys()):
-                objects = preview.objects_by_level[level]
-                logger.info(f"Создание объектов уровня {level}: {len(objects)} объектов")
+            if preview.objects_to_create:
+                min_level_in_file = min(obj["level"] for obj in preview.objects_to_create)
+                last_parent_at_level[min_level_in_file - 1] = parent_id
 
-                created_count = 0
-                for obj_data in objects:
-                    try:
-                        # Определяем родительский объект
-                        if level == 1:
-                            current_parent_id = parent_id
-                        else:
-                            # Находим родителя среди созданных объектов предыдущего уровня
-                            current_parent_id = self._find_parent_id(obj_data, created_objects, level)
+            for obj_data in preview.objects_to_create:
+                try:
+                    level = obj_data["level"]
+                    current_parent_id = last_parent_at_level.get(level - 1)
 
-                        logger.info(
-                            f"Создание объекта '{obj_data['name']}' (уровень {level}) с родителем {current_parent_id}"
-                        )
+                    if not current_parent_id:
+                        raise ApiError(f"Не найден родительский объект для уровня {level}")
 
-                        # Создаем объект
-                        object_id = await self._create_object_with_attributes(
-                            obj_data["name"], obj_data["class_name"], current_parent_id, obj_data["attributes"]
-                        )
+                    logger.info(
+                        f"Создание объекта '{obj_data['name']}' (уровень {level}) с родителем {current_parent_id}"
+                    )
 
-                        # Сохраняем информацию о созданном объекте
-                        created_object = {
-                            "id": object_id,
-                            "name": obj_data["name"],
-                            "class_name": obj_data["class_name"],
-                            "level": level,
-                            "parent_id": current_parent_id,
-                            "attributes": obj_data["attributes"],
-                        }
-                        created_objects.append(created_object)
-                        created_count += 1
+                    # Создаем объект
+                    object_id = await self._create_object_with_attributes(
+                        obj_data["name"], obj_data["class_name"], current_parent_id, obj_data["attributes"]
+                    )
 
-                        logger.debug(f"Создан объект: {obj_data['name']} (ID: {object_id})")
+                    last_parent_at_level[level] = object_id
+                    levels_to_clear = [lvl for lvl in last_parent_at_level if lvl > level]
+                    for lvl in levels_to_clear:
+                        del last_parent_at_level[lvl]
 
-                    except Exception as e:
-                        error_msg = f"Ошибка при создании объекта '{obj_data['name']}': {e}"
-                        logger.error(error_msg)
-                        errors.append(error_msg)
+                    # Сохраняем информацию о созданном объекте
+                    created_object = {
+                        "id": object_id,
+                        "name": obj_data["name"],
+                        "class_name": obj_data["class_name"],
+                        "level": level,
+                        "parent_id": current_parent_id,
+                        "attributes": obj_data["attributes"],
+                    }
+                    created_objects.append(created_object)
+                    created_by_level[level] = created_by_level.get(level, 0) + 1
 
-                created_by_level[level] = created_count
-                logger.info(f"Уровень {level} завершен: создано {created_count} объектов")
+                    logger.debug(f"Создан объект: {obj_data['name']} (ID: {object_id})")
+
+                except Exception as e:
+                    error_msg = f"Ошибка при создании объекта '{obj_data['name']}': {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
             total_created = len(created_objects)
             duration = (datetime.now() - start_time).total_seconds()
@@ -324,66 +329,64 @@ class HierarchicalExcelImporter:
                     return i
         return None
 
-    async def _load_objects_by_level(
+    async def _load_objects_sequentially(
         self, excel_path: str, structure: ExcelStructure, worksheet_name: Optional[str] = None
-    ) -> Dict[int, List[Dict[str, Any]]]:
-        """Загружает объекты из Excel, группируя по уровням."""
+    ) -> List[Dict[str, Any]]:
+        """Загружает объекты из Excel в виде последовательного списка, сохраняя порядок."""
 
-        # Загружаем Excel файл
         if worksheet_name is None:
             df = pd.read_excel(excel_path, header=None)
         else:
             df = pd.read_excel(excel_path, sheet_name=worksheet_name, header=None)
 
-        # Пропускаем строку заголовков если она есть
         has_headers = self._check_headers(df)
         data_start_row = 1 if has_headers else 0
         data_df = df.iloc[data_start_row:]
 
-        objects_by_level = {}
+        objects_list = []
 
         for _, row in data_df.iterrows():
-            # Пропускаем пустые строки
-            if pd.isna(row.iloc[structure.level_column]) or pd.isna(row.iloc[structure.name_column]):
+            if pd.isna(row.iloc[structure.level_column]) or pd.isna(row.iloc[structure.class_column]):
                 continue
 
             level = int(row.iloc[structure.level_column])
             class_name = str(row.iloc[structure.class_column]).strip()
-            object_name = str(row.iloc[structure.name_column]).strip()
+            object_name = ""
+            if pd.notna(row.iloc[structure.name_column]):
+                object_name = str(row.iloc[structure.name_column]).strip()
 
-            # Собираем атрибуты
+            # Если имя объекта пустое, используем имя класса в качестве имени объекта
+            if not object_name and class_name:
+                logger.debug(f"Имя объекта для класса '{class_name}' не найдено, используется имя класса.")
+                object_name = class_name
+
+            if not object_name or not class_name:
+                continue
+
             attributes = {}
             for col_idx, attr_name in structure.attribute_columns.items():
                 if col_idx < len(row) and pd.notna(row.iloc[col_idx]):
                     value = row.iloc[col_idx]
-                    if str(value).strip():  # Проверяем, что значение не пустое
+                    if str(value).strip():
                         attributes[attr_name] = value
 
             obj_data = {"name": object_name, "class_name": class_name, "level": level, "attributes": attributes}
+            objects_list.append(obj_data)
 
-            if level not in objects_by_level:
-                objects_by_level[level] = []
+        return objects_list
 
-            objects_by_level[level].append(obj_data)
-
-        return objects_by_level
-
-    async def _validate_objects(self, objects_by_level: Dict[int, List[Dict[str, Any]]]) -> List[str]:
+    async def _validate_objects(self, objects_to_create: List[Dict[str, Any]]) -> List[str]:
         """Валидирует объекты перед импортом."""
         errors = []
 
-        # Проверяем наличие объектов
-        if not objects_by_level:
+        if not objects_to_create:
             errors.append("Не найдено объектов для импорта")
             return errors
 
-        # Проверяем классы
         all_classes = set()
-        for objects in objects_by_level.values():
-            for obj in objects:
-                all_classes.add(obj["class_name"])
+        for obj in objects_to_create:
+            all_classes.add(obj["class_name"])
 
-        # Проверяем существование классов в Neosintez
         for class_name in all_classes:
             try:
                 await self._get_class_by_name(class_name)
@@ -449,68 +452,87 @@ class HierarchicalExcelImporter:
             if attr_name in attr_by_name:
                 attr_meta = attr_by_name[attr_name]
                 attr_id = attr_meta.Id if hasattr(attr_meta, "Id") else attr_meta.get("Id")
-                attr_type = attr_meta.Type if hasattr(attr_meta, "Type") else attr_meta.get("Type", 1)
+                attr_type = attr_meta.Type if hasattr(attr_meta, "Type") else attr_meta.get("Type", 2)
 
                 formatted_value = self._format_attribute_value(value, attr_type)
 
-                attributes_list.append({"Id": attr_id, "Value": formatted_value})
+                logger.debug(
+                    f"Подготовка атрибута для объекта {object_id}: "
+                    f"Имя='{attr_name}', "
+                    f"Тип={attr_type}, "
+                    f"Исходное значение='{value}', "
+                    f"Форматированное значение='{formatted_value}'"
+                )
+
+                if formatted_value is not None:
+                    attributes_list.append({"Id": attr_id, "Value": formatted_value})
             else:
-                logger.warning(f"Атрибут '{attr_name}' не найден в классе")
+                logger.warning(f"Атрибут '{attr_name}' не найден в классе '{class_id}'")
 
         # Устанавливаем атрибуты
         if attributes_list:
-            await self.client.objects.set_attributes(object_id, attributes_list)
-            logger.debug(f"Установлено {len(attributes_list)} атрибутов для объекта {object_id}")
+            try:
+                await self.client.objects.set_attributes(object_id, attributes_list)
+                logger.debug(f"Установлено {len(attributes_list)} атрибутов для объекта {object_id}")
+            except ApiError as e:
+                logger.error(f"Ошибка при установке атрибутов объекта {object_id}: {e}")
+                logger.error(f"Данные запроса: {e.request_data}")
+                raise
 
     def _format_attribute_value(self, value: Any, attr_type: int) -> Any:
         """Форматирует значение атрибута согласно его типу."""
-        if value is None or (isinstance(value, str) and value.strip() == ""):
+        if pd.isna(value) or (isinstance(value, str) and value.strip() == ""):
             return None
 
+        # Сначала попробуем определить тип самого значения
+        original_value = value
         try:
-            # На основе типов из test_crud_service.py:
-            # Тип 1: int (целочисленный)
-            if attr_type == 1:
-                if isinstance(value, (int, float)):
-                    return int(value)
-                # Если строка начинается с цифры, пробуем преобразовать в число
-                str_value = str(value).strip()
-                if str_value.isdigit():
-                    return int(str_value)
-                # Иначе это строка с номером/кодом, оставляем как есть
-                return str_value
-            # Тип 2: string (строковый)
-            elif attr_type == 2:
-                return str(value)
-            # Тип 3: дата
-            elif attr_type == 3:
+            attr_type_enum = WioAttributeType(attr_type)
+
+            if attr_type_enum == WioAttributeType.NUMBER:
+                if isinstance(value, str):
+                    value = value.replace(",", ".").replace(" ", "")
+                return float(value)
+
+            if attr_type_enum in [WioAttributeType.DATE, WioAttributeType.DATETIME]:
                 if isinstance(value, datetime):
                     return value.isoformat()
+                # Pandas может парсить числа как даты, что нежелательно в данном случае.
+                if isinstance(value, (int, float)):
+                    logger.warning(
+                        f"Значение '{original_value}' является числом, но тип атрибута - дата ({attr_type}). "
+                        f"Значение будет передано как есть."
+                    )
+                    return original_value
+                return pd.to_datetime(value).isoformat()
+
+            if attr_type_enum in [WioAttributeType.STRING, WioAttributeType.TEXT]:
                 return str(value)
-            # Тип 4: булево
-            elif attr_type == 4:
+
+            if attr_type_enum == WioAttributeType.OBJECT_LINK:
+                return str(value)
+            
+            # Обработка булева типа из старого кода (Type 4)
+            if attr_type == 4:
                 if isinstance(value, bool):
                     return value
                 return str(value).lower() in ("true", "1", "да", "yes")
-            else:
-                return str(value)
+
+            logger.warning(
+                f"Неподдерживаемый тип атрибута {attr_type} для значения '{original_value}'. "
+                f"Используется как есть."
+            )
+            return original_value
+
+        except (ValueError, TypeError) as e:
+            logger.warning(
+                f"Ошибка форматирования значения '{original_value}' для типа {attr_type}: {e}. "
+                f"Значение будет передано как есть."
+            )
+            return original_value
         except Exception as e:
-            logger.warning(f"Ошибка форматирования значения '{value}' типа {attr_type}: {e}")
-            return str(value)
-
-    def _find_parent_id(self, obj_data: Dict[str, Any], created_objects: List[Dict[str, Any]], level: int) -> str:
-        """Находит ID родительского объекта для объекта текущего уровня."""
-        # Простая логика: родитель - это последний созданный объект предыдущего уровня
-        # В реальном проекте здесь может быть более сложная логика сопоставления
-        parent_level = level - 1
-
-        for obj in reversed(created_objects):
-            if obj["level"] == parent_level:
-                return obj["id"]
-
-        # Если не найден родитель, используем первый объект предыдущего уровня
-        for obj in created_objects:
-            if obj["level"] == parent_level:
-                return obj["id"]
-
-        raise ApiError(f"Не найден родительский объект для уровня {level}")
+            logger.warning(
+                f"Общая ошибка форматирования значения '{original_value}' для типа {attr_type}: {e}. "
+                f"Значение будет передано как есть."
+            )
+            return original_value
