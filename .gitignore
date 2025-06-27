@@ -329,6 +329,5 @@ cython_debug/
 .venv/
 
 # Additional
-test_*.py
 .cursor/
 data/

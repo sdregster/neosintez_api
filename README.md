@@ -1,181 +1,84 @@
-# Neosintez API
+Сервисный слой предоставляет максимально простой и абстрактный интерфейс для работы с объектами в Неосинтез, инкапсулируя всю сложность API.
 
-Библиотека для работы с API Неосинтез через Python.
+**Рекомендуемый подход:**
+1.  **Опишите данные** в обычном словаре Python.
+2.  **Используйте `DynamicModelFactory`** для автоматического определения класса, создания Pydantic-модели и подготовки "чертежа" (`blueprint`) для работы с объектом.
+3.  **Используйте `ObjectService`** с полученным `blueprint` для выполнения полного цикла операций: создания (`create`), чтения (`read`), обновления (`update`) и удаления (`delete`).
 
-## Установка
+Этот подход избавляет от необходимости заранее определять Pydantic-модели и вручную сопоставлять атрибуты.
 
-```bash
-pip install neosintez-api
-```
-
-## Настройка
-
-Для работы с API необходимо создать файл `.env` в корне проекта со следующими переменными:
-
-```
-NEOSINTEZ_BASE_URL=https://your-neosintez-instance.com/
-NEOSINTEZ_USERNAME=your_username
-NEOSINTEZ_PASSWORD=your_password
-NEOSINTEZ_CLIENT_ID=your_client_id
-NEOSINTEZ_CLIENT_SECRET=your_client_secret
-NEOSINTEZ_TEST_FOLDER_ID=your_test_folder_id  # Опционально, для тестов
-```
-
-## Использование
-
-### Базовое использование
+#### Пример полного CRUD-цикла
 
 ```python
 import asyncio
-from neosintez_api import NeosintezClient, NeosintezSettings
+from neosintez_api import (
+    NeosintezConfig, 
+    NeosintezClient, 
+    DynamicModelFactory, 
+    ObjectService
+)
 
 async def main():
-    # Загрузка настроек из .env
-    settings = NeosintezSettings()
-    
-    # Создание клиента
+    # 0. Инициализация
+    settings = NeosintezConfig()
     client = NeosintezClient(settings)
+    factory = DynamicModelFactory(
+        name_aliases=["Имя объекта", "Наименование"],
+        class_name_aliases=["Класс", "Имя класса"],
+    )
+    object_service = ObjectService(client)
     
-    # Получение классов
-    classes = await client.classes.get_all()
-    print(f"Получено {len(classes)} классов")
-    
-    # Получение объектов
-    objects = await client.objects.get_children("parent-id")
-    print(f"Получено {len(objects)} объектов")
+    # 1. Определяем пользовательские данные
+    user_data = {
+        "Класс": "Стройка",
+        "Имя объекта": "Тестовая стройка из кода",
+        "МВЗ": "МВЗ_PUBLIC_API",
+        "ID стройки Адепт": 12345,
+    }
+
+    created_object_id = None
+    try:
+        # 2. Создаем "чертеж" (blueprint) и Pydantic-модель "на лету"
+        blueprint = await factory.create_from_user_data(user_data, client)
+
+        # 3. CREATE: Создаем объект
+        created_object = await object_service.create(
+            model=blueprint.model_instance,
+            class_id=blueprint.class_id,
+            parent_id=settings.test_folder_id,
+        )
+        created_object_id = created_object.id
+        print(f"Объект создан: {created_object_id}")
+
+        # 4. READ: Читаем созданный объект
+        read_object = await object_service.read(created_object_id, blueprint.model_class)
+        assert read_object.name == "Тестовая стройка из кода"
+        print("Объект успешно прочитан.")
+
+        # 5. UPDATE: Обновляем атрибуты
+        read_object.name = "Обновленная стройка"
+        read_object.mvz = "МВЗ_NEW"
+        await object_service.update(read_object, attributes_meta=blueprint.attributes_meta)
+        print("Объект обновлен.")
+
+        # 6. Проверяем обновление
+        reread_object = await object_service.read(created_object_id, blueprint.model_class)
+        assert reread_object.name == "Обновленная стройка"
+        assert reread_object.parent_id == settings.test_folder_id # parent_id не менялся
+        print("Обновление проверено.")
+
+    finally:
+        # 7. DELETE: Удаляем объект
+        if created_object_id:
+            await object_service.delete(created_object_id)
+            print(f"Объект {created_object_id} удален.")
+        
+        await client.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Работа с моделями Pydantic
-
-Библиотека предоставляет удобные инструменты для работы с объектами через модели Pydantic.
-
-#### Декоратор `neosintez_model`
-
-Декоратор `neosintez_model` добавляет в модель Pydantic метаданные и методы для работы с API Неосинтез:
-
-```python
-from pydantic import BaseModel, Field
-from neosintez_api import neosintez_model
-
-@neosintez_model(class_name="Папка МВЗ")
-class FolderModel(BaseModel):
-    """Модель для папки МВЗ"""
-    Name: str
-    mvz: Optional[str] = Field(None, alias="МВЗ")
-    adept_id: Optional[str] = Field(None, alias="ID стройки Адепт")
-```
-
-Декоратор добавляет следующие методы:
-
-- `get_object_name()` - получение имени объекта из модели
-- `get_attribute_data()` - получение данных модели с алиасами в качестве ключей
-- `get_field_to_attribute_mapping()` - получение маппинга полей модели на атрибуты Неосинтеза
-
-#### Создание моделей из атрибутов класса
-
-Функция `create_model_from_class_attributes` позволяет создавать модели Pydantic на основе атрибутов класса из Неосинтеза:
-
-```python
-from neosintez_api import create_model_from_class_attributes
-
-# Получение атрибутов класса
-classes = await client.classes.get_classes_by_name("Папка МВЗ")
-class_id = classes[0]["id"]
-class_attributes = await client.classes.get_attributes(class_id)
-
-# Создание модели из атрибутов класса
-DynamicModel = create_model_from_class_attributes(
-    "Папка МВЗ", 
-    class_attributes
-)
-
-# Создание экземпляра модели
-instance = DynamicModel(
-    Name="Тестовая папка",
-    мвз="12345"  # Поля создаются с именами в нижнем регистре
-)
-```
-
-### Сервисный слой для работы с объектами
-
-Класс `ObjectService` предоставляет удобный интерфейс для работы с объектами через модели Pydantic:
-
-```python
-from neosintez_api import ObjectService
-
-# Создание сервиса объектов
-object_service = ObjectService(client)
-
-# Создание объекта из модели
-folder = FolderModel(
-    Name="Тестовая папка МВЗ",
-    mvz="12345",
-    adept_id="ADEPT-001"
-)
-folder_id = await object_service.create(folder, parent_id)
-
-# Чтение объекта в модель
-read_folder = await object_service.read(folder_id, FolderModel)
-
-# Обновление атрибутов
-read_folder.mvz = "54321"
-updated = await object_service.update_attrs(folder_id, read_folder)
-```
-
 ## Примеры
 
-Примеры использования библиотеки находятся в папке `scripts/`.
-
-## Типичные проблемы и их решения
-
-### 1. Ошибка "AssertionError: assert not url.absolute"
-
-Эта ошибка возникает, если в методах клиента используются абсолютные URL вместе с `base_url` при создании сессии. В таком случае проверьте:
-
-- URL в `.env` должен заканчиваться на слеш (`/`)
-- В методах, использующих сессию, должны использоваться относительные пути (без базового URL)
-
-### 2. Ошибки аутентификации
-
-Проверьте корректность учетных данных:
-- Имя пользователя
-- Пароль
-- Client ID
-- Client Secret
-
-### 3. ValidationError при загрузке настроек
-
-Убедитесь, что все необходимые параметры указаны в `.env` файле или переменных окружения.
-
-## CLI (Командная строка)
-
-Для работы CLI необходимы зависимости:
-
-```
-pip install click>=8.1.0 rich>=13.0.0
-```
-
-### Примеры использования
-
-```bash
-# Получение объекта по ID
-neosintez object get 12345-abcd-67890
-
-# Создание объекта с атрибутами
-neosintez object create --class "Оборудование" --name "Насос Д200" --parent 67890-abcd-12345
-
-# Импорт из Excel с прогресс-баром
-neosintez import excel --file data.xlsx --model EquipmentModel --parent 12345-abcd-67890
-```
-
-### Архитектура CLI
-
-- Все команды CLI реализованы в папке `neosintez_api/cli/commands/`
-- Точка входа: `neosintez_api/__main__.py` и `pyproject.toml` ([project.scripts])
-- Используется Click для структуры команд и опций
-- Для красивого вывода и прогресса — Rich
-- Поддерживается режим `--dry-run` для безопасного тестирования
-- Примеры расширения: добавьте новую команду в `commands/` и зарегистрируйте её в `cli/__init__.py` 
+Более детальные примеры использования библиотеки, включая `example_dynamic_factory.py` и `example_crud_cycle.py`, находятся в папке `scripts/`.
