@@ -5,6 +5,7 @@
 import asyncio
 import json
 import logging
+import re
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
@@ -14,6 +15,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Type,
     TypeVar,
     get_args,
     get_origin,
@@ -483,3 +485,58 @@ def get_field_external_name(model_class: type, field_name: str) -> str:
     if field_info and field_info.alias != field_name:
         return field_info.alias
     return field_name
+
+
+def generate_field_name(display_name: str) -> str:
+    """Генерирует валидное имя поля Python из отображаемого имени на русском."""
+    trans_map = {
+        "а": "a",
+        "б": "b",
+        "в": "v",
+        "г": "g",
+        "д": "d",
+        "е": "e",
+        "ё": "yo",
+        "ж": "zh",
+        "з": "z",
+        "и": "i",
+        "й": "y",
+        "к": "k",
+        "л": "l",
+        "м": "m",
+        "н": "n",
+        "о": "o",
+        "п": "p",
+        "р": "r",
+        "с": "s",
+        "т": "t",
+        "у": "u",
+        "ф": "f",
+        "х": "kh",
+        "ц": "ts",
+        "ч": "ch",
+        "ш": "sh",
+        "щ": "shch",
+        "ъ": "",
+        "ы": "y",
+        "ь": "",
+        "э": "e",
+        "ю": "yu",
+        "я": "ya",
+        " ": "_",
+    }
+    lowered_name = display_name.lower()
+    latin_name = "".join([trans_map.get(char, char) for char in lowered_name])
+    latin_name = re.sub(r"[^\w_]", "", latin_name)
+    latin_name = re.sub(r"__+", "_", latin_name)
+    return latin_name.strip("_")
+
+
+def neosintez_type_to_python_type(neo_type: int) -> Type:
+    """Конвертирует числовой тип атрибута из Неосинтеза в тип Python."""
+    if neo_type == 1:
+        return int
+    elif neo_type == 2:
+        return str
+    else:
+        return Any
