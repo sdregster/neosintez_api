@@ -26,6 +26,41 @@ class ObjectBlueprint(NamedTuple):
     class_name: str
 
 
+def _create_pydantic_model(class_name: str, attributes_meta: Dict[str, Any]) -> type[BaseModel]:
+    """
+    Создает Pydantic-модель на основе метаданных класса.
+    Используется обеими фабриками.
+    """
+    # 4. Определяем поля для динамических атрибутов
+    dynamic_fields = {}
+    for attr_name, meta in attributes_meta.items():
+        field_name = generate_field_name(attr_name)
+        python_type = neosintez_type_to_python_type(meta.Type if hasattr(meta, "Type") else None)
+        # Для чтения делаем все поля опциональными (None)
+        dynamic_fields[field_name] = (
+            Optional[python_type],
+            Field(None, alias=attr_name),
+        )
+
+    # 5. Определяем статические поля, которые есть у любого объекта
+    static_fields = {
+        "id": (Optional[str], Field(None, description="ID объекта в Неосинтезе")),
+        "class_id": (Optional[str], Field(None, description="ID класса объекта")),
+        "parent_id": (Optional[str], Field(None, description="ID родительского объекта")),
+        "name": (str, Field(..., description="Имя объекта")),
+    }
+
+    # 6. Создаем единую модель с "чистыми" именами полей и поддержкой алиасов
+    sanitized_class_name = "".join(filter(str.isalnum, class_name))
+    UnifiedObjectModel = create_model(
+        f"{sanitized_class_name}ObjectModel",
+        **static_fields,
+        **dynamic_fields,
+        __config__=ConfigDict(populate_by_name=True),
+    )
+    return UnifiedObjectModel
+
+
 class DynamicModelFactory:
     """
     "Строитель", который разбирает пользовательские данные ОДНОГО объекта
@@ -66,40 +101,8 @@ class DynamicModelFactory:
         # 3. Готовим справочник метаданных по имени атрибута
         attr_lookup = {attr_data.Name: attr_data for attr_data in attributes_meta.values()}
 
-        # 4. Определяем поля для динамических атрибутов
-        dynamic_fields = {}
-        for attr_name in attribute_data:
-            meta = attr_lookup.get(attr_name)
-            if not meta:
-                # Атрибут из Excel не найден в метаданных класса, пропускаем
-                continue
-
-            field_name = generate_field_name(attr_name)
-            python_type = neosintez_type_to_python_type(meta.Type)
-            dynamic_fields[field_name] = (python_type, Field(..., alias=attr_name))
-
-        # 5. Определяем статические поля, которые есть у любого объекта
-        static_fields = {
-            "id": (Optional[str], Field(None, description="ID объекта в Неосинтезе")),
-            "class_id": (
-                Optional[str],
-                Field(None, description="ID класса объекта"),
-            ),
-            "parent_id": (
-                Optional[str],
-                Field(None, description="ID родительского объекта"),
-            ),
-            "name": (str, Field(..., description="Имя объекта")),
-        }
-
-        # 6. Создаем единую модель с "чистыми" именами полей и поддержкой алиасов
-        sanitized_class_name = "".join(filter(str.isalnum, class_name))
-        UnifiedObjectModel = create_model(
-            f"{sanitized_class_name}ObjectModel",
-            **static_fields,
-            **dynamic_fields,
-            __config__=ConfigDict(populate_by_name=True),
-        )
+        # 4. Создаем Pydantic модель с помощью общей функции
+        UnifiedObjectModel = _create_pydantic_model(class_name, attr_lookup)
         print(f"Создана единая Pydantic-модель: '{UnifiedObjectModel.__name__}'")
 
         # 7. Готовим данные для создания экземпляра модели.

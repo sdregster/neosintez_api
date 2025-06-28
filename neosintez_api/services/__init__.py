@@ -3,9 +3,18 @@
 """
 
 from .cache import TTLCache
-from .factories import DynamicModelFactory, ObjectBlueprint
+from .class_service import ClassService
+from .factories import DynamicModelFactory, ObjectBlueprint, ObjectToModelFactory
 from .mappers import ObjectMapper
 from .object_service import ObjectService
 
 
-__all__ = ["ObjectService", "ObjectMapper", "TTLCache", "DynamicModelFactory", "ObjectBlueprint"]
+__all__ = [
+    "ObjectService",
+    "ClassService",
+    "ObjectMapper",
+    "TTLCache",
+    "DynamicModelFactory",
+    "ObjectToModelFactory",
+    "ObjectBlueprint",
+]

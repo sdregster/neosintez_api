@@ -5,6 +5,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+from ..core.exceptions import NeosintezAPIError
 from ..exceptions import ApiError
 from ..models import Attribute, EntityClass
 from ..services.cache import TTLCache
@@ -22,7 +23,9 @@ class ClassesResource(BaseResource):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # TTL кэш для атрибутов классов с автоматической инвалидацией (30 минут)
+        # TTL кэш для метаданных классов (30 минут)
+        self._class_cache = TTLCache[Dict[str, Any]](default_ttl=1800, max_size=50)
+        # TTL кэш для атрибутов классов (30 минут)
         self._attr_cache = TTLCache[List[Attribute]](default_ttl=1800, max_size=200)
 
     async def get(self, exclude_attributes: bool = False) -> list[dict[str, Any]]:
@@ -80,6 +83,7 @@ class ClassesResource(BaseResource):
     async def get_by_id(self, entity_id: str) -> Optional[EntityClass]:
         """
         Получает информацию о классе объектов по его идентификатору.
+        Использует кэш и запасной механизм получения всех классов.
 
         Args:
             entity_id: Идентификатор класса объектов
@@ -87,16 +91,57 @@ class ClassesResource(BaseResource):
         Returns:
             Optional[EntityClass]: Информация о классе объектов или None, если класс не найден
         """
-        endpoint = f"api/structure/entities/{entity_id}"
+        # 1. Проверяем кэш
+        cached_class = self._class_cache.get(entity_id)
+        if cached_class:
+            logger.debug(f"Класс {entity_id} найден в кэше.")
+            return EntityClass.model_validate(cached_class)
 
+        # 2. Пытаемся получить напрямую
+        logger.debug(f"Класс {entity_id} не найден в кэше, попытка прямого запроса...")
         try:
+            endpoint = f"api/structure/entities/{entity_id}"
             result = await self._request("GET", endpoint)
             if isinstance(result, dict):
+                self._class_cache.set(entity_id, result)  # Сохраняем в кэш
                 return EntityClass.model_validate(result)
-        except Exception:
-            return None
+        except NeosintezAPIError as e:
+            # Если прямой запрос не удался (404), используем запасной механизм
+            if e.status_code == 404:
+                logger.warning(
+                    f"Прямой запрос для класса {entity_id} не удался (404). "
+                    f"Запускаю запасной механизм: получение всех классов."
+                )
+                await self._preload_all_classes_to_cache()
+                # Повторно ищем в кэше после предзагрузки
+                cached_class_after_preload = self._class_cache.get(entity_id)
+                if cached_class_after_preload:
+                    logger.debug(f"Класс {entity_id} найден в кэше после предзагрузки.")
+                    return EntityClass.model_validate(cached_class_after_preload)
+            else:
+                # Если ошибка не 404, логируем и пробрасываем ее дальше
+                logger.error(f"Произошла ошибка API при получении класса {entity_id}: {e}")
+                raise e
 
+        # Если класс не найден ни одним из способов
+        logger.error(f"Класс с ID {entity_id} не найден ни одним из доступных способов.")
         return None
+
+    async def _preload_all_classes_to_cache(self):
+        """
+        Получает все классы из API и загружает их в кэш.
+        """
+        logger.debug("Предзагрузка всех классов в кэш...")
+        try:
+            # Получаем классы без атрибутов, т.к. нам нужна только основная информация
+            all_classes = await self.get(exclude_attributes=True)
+            for cls_data in all_classes:
+                class_id = cls_data.get("Id")
+                if class_id:
+                    self._class_cache.set(str(class_id), cls_data)
+            logger.info(f"Успешно предзагружено {len(all_classes)} классов в кэш.")
+        except Exception as e:
+            logger.error(f"Ошибка при предзагрузке классов в кэш: {e}")
 
     async def get_children(self, parent_id: str) -> List[EntityClass]:
         """
