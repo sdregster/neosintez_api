@@ -1,19 +1,15 @@
 import asyncio
-from time import sleep
 
 import click
 from rich.console import Console
-from rich.progress import track
 from rich.table import Table
 
 from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
-from neosintez_api.hierarchical_excel_import import HierarchicalExcelImporter
-from neosintez_api.resources.classes import ClassesResource
-from neosintez_api.resources.objects import ObjectsResource
+from neosintez_api.services.excel_importer import ExcelImporter
 
 
-@click.group()
+@click.group(name="import")
 def import_():
     """
     Импорт данных (Excel и др.)
@@ -23,32 +19,11 @@ def import_():
 
 @import_.command("excel")
 @click.option("--file", "file_path", required=True, type=click.Path(exists=True), help="Путь к Excel-файлу")
-@click.option("--model", "model_name", required=True, help="Имя Pydantic-модели")
-@click.option("--parent", "parent_id", required=True, help="ID родителя")
-@click.option("--dry-run", is_flag=True, help="Только проверить, не импортировать")
-def excel(file_path, model_name, parent_id, dry_run):
-    """
-    Импортировать данные из Excel-файла с валидацией через Pydantic-модель.
-    """
-    console = Console()
-    if dry_run:
-        console.print(f"[yellow]Режим dry-run. Импорт не будет выполнен. Проверка файла:[/] {file_path}")
-        for _step in track(range(5), description="Проверка..."):
-            sleep(0.2)
-        console.print("[green]Валидация завершена (заглушка)")
-        return
-    for _step in track(range(10), description="Импорт..."):
-        sleep(0.2)
-    console.print("[green]Импорт завершён (заглушка)")
-
-
-@import_.command("hierarchy")
-@click.option("--file", "file_path", required=True, type=click.Path(exists=True), help="Путь к Excel-файлу")
 @click.option("--parent", "parent_id", required=True, help="ID родительского объекта")
 @click.option("--sheet", "sheet_name", help="Имя листа Excel (по умолчанию первый лист)")
 @click.option("--preview", is_flag=True, help="Только показать предварительный просмотр")
 @click.option("--dry-run", is_flag=True, help="Только проверить структуру файла")
-def hierarchy(file_path, parent_id, sheet_name, preview, dry_run):
+def excel(file_path, parent_id, sheet_name, preview, dry_run):
     """
     Иерархический импорт объектов из Excel-файла по уровням.
     Автоматически определяет структуру файла и создает объекты уровень за уровнем.
@@ -60,14 +35,7 @@ def hierarchy(file_path, parent_id, sheet_name, preview, dry_run):
             # Инициализация клиента
             settings = NeosintezConfig()
             async with NeosintezClient(settings) as client:
-                # Добавляем ресурсы к клиенту
-                client.classes = ClassesResource(client)
-                client.objects = ObjectsResource(client)
-
-                # Авторизация
-                await client.auth()
-
-                importer = HierarchicalExcelImporter(client)
+                importer = ExcelImporter(client)
 
                 # Анализ структуры файла
                 console.print(f"[blue]Анализ структуры файла:[/] {file_path}")

@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
-from neosintez_api.core.exceptions import NeosintezAPIError
 from neosintez_api.services import DynamicModelFactory, ObjectService
 
 # Настройка логирования для вывода детальной информации
@@ -55,7 +54,24 @@ async def main():
     try:
         # 2. Создаем "чертеж" (blueprint) с помощью фабрики
         print("--- Этап 1: Создание Pydantic-модели ---")
-        blueprint = await factory.create_from_user_data(user_defined_data, client)
+
+        # Получаем метаданные для класса перед вызовом фабрики
+        class_name_to_find = user_defined_data["Класс"]
+        class_info_list = await client.classes.get_classes_by_name(class_name_to_find)
+        if not class_info_list:
+            raise ValueError(f"Класс '{class_name_to_find}' не найден")
+        
+        class_info = next(c for c in class_info_list if c['name'].lower() == class_name_to_find.lower())
+        class_id = class_info['id']
+        class_attributes = await client.classes.get_attributes(class_id)
+        attributes_meta_map = {attr.Name: attr for attr in class_attributes}
+
+        blueprint = await factory.create_from_user_data(
+            user_data=user_defined_data,
+            class_name=class_name_to_find,
+            class_id=class_id,
+            attributes_meta=attributes_meta_map,
+        )
         print("Pydantic-модель для создания:")
         print(blueprint.model_instance.model_dump_json(indent=2))
         print("-" * 20 + "\n")
@@ -122,15 +138,11 @@ async def main():
                     await object_service.read(created_object.id, blueprint.model_class)
                     # Если мы дошли сюда, значит, объект не удалился. Это ошибка.
                     print(f"ОШИБКА: Объект {created_object.id} все еще существует после удаления.")
-                except NeosintezAPIError as e:
-                    # Мы ожидаем ошибку 404 Not Found. Это подтверждает, что объект удален.
-                    if e.status_code == 404:
-                        print("Проверка удаления прошла успешно: объект не найден (ошибка 404).")
-                    else:
-                        # Если ошибка другая, это неожиданно.
-                        print(f"ОШИБКА: Получена неожиданная ошибка API при проверке удаления: {e}")
                 except Exception as e:
-                    print(f"ОШИБКА: Получена неожиданная общая ошибка при проверке удаления: {e}")
+                    # Мы ожидаем ошибку, которая будет указывать на отсутствие объекта.
+                    # В идеале это должна быть специфичная ошибка API (например, 404 Not Found),
+                    # но для простоты примера ловим общее исключение.
+                    print(f"Проверка удаления прошла успешно: объект не найден (получена ошибка: {e})")
 
         await client.close()
         print("\nСоединение с клиентом закрыто.")

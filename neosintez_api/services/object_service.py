@@ -5,18 +5,14 @@
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Generic, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Type, Union
 from uuid import UUID
-
-from pydantic import BaseModel
 
 from ..exceptions import ApiError
 from ..utils import generate_field_name
 from .mappers.object_mapper import ObjectMapper
+from .models import BulkCreateResult, CreateRequest, T
 
-
-# Определяем тип для динамических моделей
-T = TypeVar("T", bound=BaseModel)
 
 # Настройка логгера
 logger = logging.getLogger("neosintez_api.services.object_service")
@@ -97,11 +93,47 @@ class ObjectService(Generic[T]):
             # 5. Возвращаем обновленную модель с ID
             model.id = object_id
             model.class_id = class_id
+            model.parent_id = str(parent_id) if parent_id else None
             return model
 
         except Exception as e:
             logger.error(f"Ошибка API при создании объекта '{model.name}': {e}")
             raise
+
+    async def create_many(
+        self,
+        requests: List[CreateRequest[T]],
+    ) -> BulkCreateResult[T]:
+        """
+        Массовое создание объектов из списка запросов.
+
+        Args:
+            requests: Список запросов на создание, каждый из которых
+                      содержит модель и метаданные.
+
+        Returns:
+            BulkCreateResult: Результат с созданными моделями и ошибками.
+        """
+        logger.info(f"Начало массового создания {len(requests)} объектов.")
+        result = BulkCreateResult[T]()
+
+        for request in requests:
+            try:
+                created_model = await self.create(
+                    model=request.model,
+                    class_id=request.class_id,
+                    class_name=request.class_name,
+                    attributes_meta=request.attributes_meta,
+                    parent_id=request.parent_id,
+                )
+                result.created_models.append(created_model)
+            except Exception as e:
+                error_msg = f"Ошибка при создании объекта '{request.model.name}': {e}"
+                logger.error(error_msg, exc_info=True)
+                result.errors.append(error_msg)
+
+        logger.info(f"Массовое создание завершено. Успешно: {len(result.created_models)}, Ошибок: {len(result.errors)}")
+        return result
 
     async def read(self, object_id: Union[str, UUID], model_class: Type[T]) -> T:
         """
@@ -193,18 +225,17 @@ class ObjectService(Generic[T]):
                 update_tasks.append(self.client.objects.move(object_id, model.parent_id))
                 logger.info(f"Запланировано перемещение в родителя {model.parent_id}")
 
-            # Обновляем атрибуты (пока без сравнения, просто перезаписываем)
-            attr_meta_by_name = {
-                (a["Name"] if isinstance(a, dict) else a.Name): (a if isinstance(a, dict) else a.model_dump())
-                for a in attributes_meta.values()
-            }
-            attributes_list = await self.mapper.model_to_attributes(model, attr_meta_by_name)
+            # 3. Обновляем атрибуты, если они изменились
+            attributes_to_update = await self.update_attributes(
+                object_id=object_id,
+                model=model,
+                attributes_meta=attributes_meta,
+            )
+            if attributes_to_update:
+                update_tasks.append(self.client.objects.set_attributes(object_id, attributes_to_update))
+                logger.info(f"Запланировано обновление {len(attributes_to_update)} атрибутов.")
 
-            if attributes_list:
-                update_tasks.append(self.client.objects.set_attributes(object_id, attributes_list))
-                logger.info(f"Запланировано обновление {len(attributes_list)} атрибутов.")
-
-            # 3. Выполняем все запланированные задачи параллельно
+            # 4. Выполняем все запланированные задачи параллельно
             if update_tasks:
                 await asyncio.gather(*update_tasks)
                 logger.info(f"Все задачи по обновлению объекта {object_id} успешно выполнены.")
@@ -215,6 +246,68 @@ class ObjectService(Generic[T]):
         except Exception as e:
             logger.error(f"Ошибка при обновлении объекта {model.id}: {e}")
             raise
+
+    async def update_attributes(
+        self,
+        object_id: str,
+        model: T,
+        attributes_meta: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """
+        Сравнивает атрибуты модели с текущими атрибутами объекта и возвращает список для обновления.
+
+        Args:
+            object_id: ID объекта для обновления.
+            model: Pydantic-модель с новыми данными.
+            attributes_meta: Метаданные атрибутов.
+
+        Returns:
+            Список словарей с атрибутами, которые нужно обновить.
+            Если изменений нет, возвращает пустой список.
+        """
+        current_object = await self.client.objects.get_by_id(object_id)
+        current_attributes = current_object.Attributes or {}
+
+        # TODO: Добавить кеширование для этой операции
+        class_attributes = await self.client.classes.get_attributes(current_object.EntityId)
+        attr_meta_by_name = {
+            (a["Name"] if isinstance(a, dict) else a.Name): (a if isinstance(a, dict) else a.model_dump())
+            for a in class_attributes
+        }
+        name_to_id_map = {attr["Name"]: attr["Id"] for attr in attr_meta_by_name.values()}
+
+        # Преобразуем модель в список атрибутов для сравнения
+        new_attributes_list = await self.mapper.model_to_attributes(model, attr_meta_by_name)
+        new_attributes_map = {attr["Id"]: attr for attr in new_attributes_list}
+
+        attributes_to_update = []
+
+        # Сравниваем новые и старые значения
+        for attr_id, new_attr_data in new_attributes_map.items():
+            current_attr_data = current_attributes.get(str(attr_id))
+            new_value = new_attr_data["Value"]
+
+            # Если атрибута нет в текущем объекте, добавляем его
+            if current_attr_data is None:
+                attributes_to_update.append(new_attr_data)
+                continue
+
+            current_value = current_attr_data.get("Value")
+
+            # Сравниваем значения с учетом типов
+            # TODO: вынести в отдельный типизированный компаратор
+            if isinstance(new_value, float) and isinstance(current_value, (int, float)):
+                if not asyncio.isclose(new_value, float(current_value)):
+                    attributes_to_update.append(new_attr_data)
+            elif str(new_value) != str(current_value):
+                attributes_to_update.append(new_attr_data)
+
+        if attributes_to_update:
+            logger.info(f"Обнаружено {len(attributes_to_update)} атрибутов для обновления объекта {object_id}.")
+        else:
+            logger.info(f"Атрибуты объекта {object_id} не требуют обновления.")
+
+        return attributes_to_update
 
     async def delete(self, object_id: Union[str, UUID]) -> bool:
         """

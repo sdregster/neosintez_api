@@ -36,8 +36,24 @@ async def main():
     client = NeosintezClient(settings)
 
     try:
+        # Получаем метаданные для класса перед вызовом фабрики
+        class_name_to_find = user_defined_data["Класс"]
+        class_info_list = await client.classes.get_classes_by_name(class_name_to_find)
+        if not class_info_list:
+            raise ValueError(f"Класс '{class_name_to_find}' не найден")
+        
+        class_info = next(c for c in class_info_list if c['name'].lower() == class_name_to_find.lower())
+        class_id = class_info['id']
+        class_attributes = await client.classes.get_attributes(class_id)
+        attributes_meta_map = {attr.Name: attr for attr in class_attributes}
+
         # Используем фабрику для получения "чертежа" объекта
-        blueprint = await factory.create_from_user_data(user_defined_data, client)
+        blueprint = await factory.create_from_user_data(
+            user_data=user_defined_data,
+            class_name=class_name_to_find,
+            class_id=class_id,
+            attributes_meta=attributes_meta_map,
+        )
 
         print("\n--- Итог ---")
         print(f"Класс для создания в Неосинтез: '{blueprint.class_name}'")

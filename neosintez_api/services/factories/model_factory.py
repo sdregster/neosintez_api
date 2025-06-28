@@ -10,7 +10,7 @@ from neosintez_api.utils import generate_field_name, neosintez_type_to_python_ty
 
 
 if TYPE_CHECKING:
-    from neosintez_api.core.client import NeosintezClient
+    pass
 
 
 class ObjectBlueprint(NamedTuple):
@@ -43,56 +43,39 @@ class DynamicModelFactory:
                 return key, value
         return None, None
 
-    async def create_from_user_data(self, user_data: Dict[str, Any], client: "NeosintezClient") -> ObjectBlueprint:
+    async def create_from_user_data(
+        self,
+        user_data: Dict[str, Any],
+        class_name: str,
+        class_id: str,
+        attributes_meta: Dict[str, Any],
+    ) -> ObjectBlueprint:
         """Основной метод фабрики."""
         # 1. Извлекаем стандартную информацию
-        original_class_key, class_name = self._find_and_extract(user_data, self.class_name_aliases)
-        if not class_name:
-            raise ValueError(f"Не удалось найти имя класса по алиасам: {self.class_name_aliases}")
-
         original_name_key, object_name = self._find_and_extract(user_data, self.name_aliases)
         if not object_name:
             raise ValueError(f"Не удалось найти имя объекта по алиасам: {self.name_aliases}")
 
-        print(f"Найден класс: '{class_name}', Имя объекта: '{object_name}'")
-
         # 2. Отделяем данные для атрибутов
-        attribute_data = {k: v for k, v in user_data.items() if k not in (original_class_key, original_name_key)}
-        print(f"Найдены пользовательские атрибуты: {list(attribute_data.keys())}")
-
-        # 3. Получаем метаданные из API
-        print("Запрашиваем все классы с атрибутами...")
-        all_classes_meta = await client.classes.get(exclude_attributes=False)
-
-        target_class_meta = next(
-            (c for c in all_classes_meta if c.get("Name", "").lower() == class_name.lower()),
-            None,
-        )
-        if not target_class_meta:
-            raise ValueError(f"Класс '{class_name}' не найден в API.")
-
-        class_id = target_class_meta.get("Id")
-        if not class_id:
-            raise ValueError(f"Не удалось получить ID для класса '{class_name}'")
-
-        api_attributes = target_class_meta.get("Attributes", {})
-        if not api_attributes:
-            print(f"Предупреждение: для класса '{class_name}' не найдено атрибутов в API.")
-
-        attr_lookup = {
-            attr_data.get("Name"): attr_data for _, attr_data in api_attributes.items() if isinstance(attr_data, dict)
+        attribute_data = {
+            k: v
+            for k, v in user_data.items()
+            if k.lower() not in self.name_aliases and k.lower() not in self.class_name_aliases
         }
+
+        # 3. Готовим справочник метаданных по имени атрибута
+        attr_lookup = {attr_data.Name: attr_data for attr_data in attributes_meta.values()}
 
         # 4. Определяем поля для динамических атрибутов
         dynamic_fields = {}
         for attr_name in attribute_data:
             meta = attr_lookup.get(attr_name)
             if not meta:
-                print(f"Предупреждение: Атрибут '{attr_name}' не найден в метаданных класса '{class_name}'")
+                # Атрибут из Excel не найден в метаданных класса, пропускаем
                 continue
 
             field_name = generate_field_name(attr_name)
-            python_type = neosintez_type_to_python_type(meta.get("Type"))
+            python_type = neosintez_type_to_python_type(meta.Type)
             dynamic_fields[field_name] = (python_type, Field(..., alias=attr_name))
 
         # 5. Определяем статические поля, которые есть у любого объекта
@@ -131,7 +114,7 @@ class DynamicModelFactory:
         return ObjectBlueprint(
             model_class=UnifiedObjectModel,
             model_instance=model_instance,
-            attributes_meta=api_attributes,
+            attributes_meta=attributes_meta,
             class_id=class_id,
             class_name=class_name,
         )

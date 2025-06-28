@@ -6,25 +6,60 @@ import asyncio
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import pytest_asyncio
+from _pytest.fixtures import FixtureRequest
 
-from neosintez_api.config import NeosintezSettings
+from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
 from neosintez_api.services.cache import TTLCache
+from neosintez_api.services.factories.model_factory import DynamicModelFactory
 from neosintez_api.services.object_service import ObjectService
 
 
-@pytest.fixture
-def event_loop():
-    """Создает event loop для async тестов."""
-    loop = asyncio.new_event_loop()
+@pytest.fixture(scope="session")
+def event_loop(request: FixtureRequest):
+    """Создает event loop для async тестов на всю сессию."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(scope="session")
+def real_settings() -> NeosintezConfig:
+    """Настоящие настройки API для интеграционных тестов."""
+    return NeosintezConfig()
+
+
+@pytest_asyncio.fixture(scope="session")
+async def real_client(real_settings: NeosintezConfig) -> NeosintezClient:
+    """
+    Настоящий клиент API для интеграционных тестов.
+    Создается один раз на сессию и закрывается в конце.
+    """
+    client = NeosintezClient(real_settings)
+    yield client
+    await client.close()
+
+
+@pytest.fixture(scope="session")
+def dynamic_model_factory() -> DynamicModelFactory:
+    """Экземпляр фабрики моделей."""
+    return DynamicModelFactory(
+        name_aliases=["Имя объекта", "Наименование", "Name"],
+        class_name_aliases=["Класс", "Имя класса", "className"],
+    )
+
+
+@pytest.fixture(scope="session")
+def object_service(real_client: NeosintezClient) -> ObjectService:
+    """Экземпляр ObjectService с настоящим клиентом."""
+    return ObjectService(real_client)
 
 
 @pytest.fixture
 def mock_settings():
     """Мок настроек API."""
-    return NeosintezSettings(
+    return NeosintezConfig(
         base_url="https://test.neosintez.ru",
         username="test_user",
         password="test_password",
@@ -43,12 +78,6 @@ def mock_client(mock_settings):
     client.objects = AsyncMock()
 
     return client
-
-
-@pytest.fixture
-def object_service(mock_client):
-    """Экземпляр ObjectService с мок-клиентом."""
-    return ObjectService(mock_client)
 
 
 @pytest.fixture
