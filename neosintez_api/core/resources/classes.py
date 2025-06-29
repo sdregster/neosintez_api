@@ -5,11 +5,10 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from ..core.exceptions import NeosintezAPIError
-from ..exceptions import ApiError
-from ..models import Attribute, EntityClass
-from ..services.cache import TTLCache
-from .base import BaseResource
+from neosintez_api.core.exceptions import NeosintezAPIError
+from neosintez_api.models import Attribute, EntityClass
+from neosintez_api.services.cache import TTLCache
+from neosintez_api.core.resources.base import BaseResource
 
 
 # Настройка логгера
@@ -280,11 +279,11 @@ class ClassesResource(BaseResource):
             str: ID найденного класса
 
         Raises:
-            ApiError: Если класс не найден
+            NeosintezAPIError: Если класс не найден
         """
         classes = await self.get_classes_by_name(class_name)
         if not classes:
-            raise ApiError(404, f"Класс '{class_name}' не найден", None)
+            raise NeosintezAPIError(404, f"Класс '{class_name}' не найден", None)
 
         # Возвращаем ID первого найденного класса
         return classes[0]["id"]

@@ -5,7 +5,7 @@ from rich.console import Console
 
 from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
-from neosintez_api.exceptions import ApiError
+from neosintez_api.core.exceptions import NeosintezAPIError
 from neosintez_api.models import EquipmentModel
 from neosintez_api.services import ObjectService
 
@@ -34,7 +34,7 @@ def get(object_id):
                 model = await service.read(object_id, EquipmentModel)
                 console.print("[bold green]Объект получен:[/]")
                 console.print(model)
-        except ApiError as e:
+        except NeosintezAPIError as e:
             console.print(f"[bold red]Ошибка API:[/] {e}")
         except Exception as e:
             console.print(f"[bold red]Неизвестная ошибка:[/] {e}")
@@ -85,7 +85,7 @@ def update(object_id, attr, dry_run):
                     console.print(f"[bold green]Объект обновлён:[/] {object_id}")
                 else:
                     console.print(f"[bold red]Ошибка при обновлении объекта:[/] {object_id}")
-        except ApiError as e:
+        except NeosintezAPIError as e:
             console.print(f"[bold red]Ошибка API:[/] {e}")
         except Exception as e:
             console.print(f"[bold red]Неизвестная ошибка:[/] {e}")
@@ -112,7 +112,7 @@ def delete(object_id, dry_run):
                 # В ObjectService нет delete, используем client напрямую
                 await client.delete(f"objects/{object_id}")
                 console.print(f"[bold red]Объект удалён:[/] {object_id}")
-        except ApiError as e:
+        except NeosintezAPIError as e:
             console.print(f"[bold red]Ошибка API:[/] {e}")
         except Exception as e:
             console.print(f"[bold red]Неизвестная ошибка:[/] {e}")

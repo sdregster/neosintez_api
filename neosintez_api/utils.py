@@ -24,8 +24,8 @@ from uuid import UUID
 
 import aiohttp
 
-from .core.enums import WioAttributeType
-from .exceptions import (
+from neosintez_api.core.enums import WioAttributeType
+from neosintez_api.core.exceptions import (
     NeosintezConnectionError,
     NeosintezTimeoutError,
     NeosintezValidationError,

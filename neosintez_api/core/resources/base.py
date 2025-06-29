@@ -23,6 +23,7 @@ class BaseResource:
         Args:
             client: Экземпляр NeosintezClient
         """
+
         self._client = client
 
     @property

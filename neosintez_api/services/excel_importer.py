@@ -11,7 +11,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 from ..core.client import NeosintezClient
-from ..exceptions import ApiError
+from neosintez_api.core.exceptions import NeosintezAPIError
 from .factories import DynamicModelFactory
 from .object_service import CreateRequest, ObjectService
 
@@ -127,7 +127,7 @@ class ExcelImporter:
                     name_column = 2
                     logger.info("Используем стандартное расположение колонок: Уровень(0), Класс(1), Имя объекта(2)")
                 else:
-                    raise ApiError("Не удалось найти обязательные колонки: Уровень, Класс, Имя объекта")
+                    raise NeosintezAPIError("Не удалось найти обязательные колонки: Уровень, Класс, Имя объекта")
 
             # Определяем колонки атрибутов (все остальные)
             used_columns = {level_column, class_column, name_column}
@@ -168,7 +168,7 @@ class ExcelImporter:
 
         except Exception as e:
             logger.error(f"Ошибка при анализе Excel файла: {e}")
-            raise ApiError(f"Ошибка при анализе Excel файла: {e}") from e
+            raise NeosintezAPIError(f"Ошибка при анализе Excel файла: {e}") from e
 
     async def preview_import(
         self, excel_path: str, parent_id: str, worksheet_name: Optional[str] = None
@@ -526,7 +526,7 @@ class ExcelImporter:
                 standardized_class_info = {"Id": class_info["id"], "Name": class_info["name"]}
                 self.classes_cache[class_name] = standardized_class_info
             else:
-                raise ApiError(f"Класс '{class_name}' не найден")
+                raise NeosintezAPIError(f"Класс '{class_name}' не найден")
 
         return self.classes_cache[class_name]
 

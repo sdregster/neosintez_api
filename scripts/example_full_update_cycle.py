@@ -85,8 +85,7 @@ async def main():
         
         assert reread_object.name == new_name
         assert getattr(reread_object, massa_field) == new_mass
-        # API может возвращать дату в своем формате, сравним только дату, без времени
-        assert getattr(reread_object, data_postavki_field, "").startswith("2030-01-01")
+        assert getattr(reread_object, data_postavki_field) == new_date
         # assert getattr(reread_object, edinica_izmereniya_field) is None
         
         print("✅ Проверка прошла успешно! Все изменения корректно сохранены.")

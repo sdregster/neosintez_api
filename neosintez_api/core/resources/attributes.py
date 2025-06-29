@@ -6,8 +6,8 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
-from ..models import Attribute, AttributeListResponse
-from .base import BaseResource
+from neosintez_api.core.resources.base import BaseResource
+from neosintez_api.models import Attribute, AttributeListResponse
 
 
 class AttributesResource(BaseResource):

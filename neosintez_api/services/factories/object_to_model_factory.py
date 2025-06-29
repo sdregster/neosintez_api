@@ -4,7 +4,7 @@
 
 from typing import TYPE_CHECKING, Any, Dict
 
-from neosintez_api.exceptions import ApiError
+from neosintez_api.core.exceptions import NeosintezAPIError
 from neosintez_api.models import Attribute
 from neosintez_api.services.class_service import ClassService
 from neosintez_api.services.factories.model_factory import (
@@ -94,7 +94,7 @@ class ObjectToModelFactory:
             raw_data = await self.client._request("GET", endpoint)
             return raw_data
         except Exception as e:
-            raise ApiError(f"Ошибка получения объекта {object_id}: {e}")
+            raise NeosintezAPIError(f"Ошибка получения объекта {object_id}: {e}")
 
     def _populate_model_from_object(
         self,

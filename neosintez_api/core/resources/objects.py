@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
-from ..models import (
+from ...models import (
     Object,
     PathAncestor,
     PathResponse,
@@ -16,7 +16,7 @@ from ..models import (
     SearchRequest,
     SearchResponse,
 )
-from ..utils import CustomJSONEncoder, chunk_list
+from ...utils import CustomJSONEncoder, chunk_list
 from .base import BaseResource
 
 
@@ -52,7 +52,7 @@ class ObjectsResource(BaseResource):
 
             return Object.model_validate(result)
 
-        from ..exceptions import NeosintezAPIError
+        from ...exceptions import NeosintezAPIError
 
         raise NeosintezAPIError(404, "Объект не найден", None)
 

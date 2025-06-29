@@ -10,13 +10,10 @@ from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 import aiohttp
 from pydantic import BaseModel
 
+from neosintez_api.core.resources import AttributesResource, ClassesResource, ObjectsResource
+from neosintez_api.utils import CustomJSONEncoder, parse_error_response, retry
+
 from ..config import NeosintezConfig
-from ..resources import (
-    AttributesResource,
-    ClassesResource,
-    ObjectsResource,
-)
-from ..utils import CustomJSONEncoder, parse_error_response, retry
 from .exceptions import (
     NeosintezAPIError,
     NeosintezAuthError,

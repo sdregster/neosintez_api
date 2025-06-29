@@ -8,7 +8,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, Generic, List, Type, Union
 from uuid import UUID
 
-from ..exceptions import ApiError
+from neosintez_api.core.exceptions import NeosintezAPIError
 from ..utils import generate_field_name
 from .mappers.object_mapper import ObjectMapper
 from .models import BulkCreateResult, CreateRequest, T
@@ -75,7 +75,7 @@ class ObjectService(Generic[T]):
             response = await self.client.objects.create(object_data, parent_id=parent_id)
             object_id = response.get("Id")
             if not object_id:
-                raise ApiError("Не удалось получить ID созданного объекта после создания")
+                raise NeosintezAPIError("Не удалось получить ID созданного объекта после создания")
             logger.debug(f"Объект '{object_name}' создан с ID: {object_id}")
 
             # 3. Преобразуем модель в атрибуты с помощью маппера
