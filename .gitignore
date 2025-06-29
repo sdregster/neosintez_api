@@ -330,4 +330,5 @@ cython_debug/
 
 # Additional
 .cursor/
+.cursorrules
 data/
