@@ -38,14 +38,15 @@ class NeosintezClient:
         token: Токен доступа
     """
 
-    def __init__(self, settings: NeosintezConfig):
+    def __init__(self, settings: Optional[NeosintezConfig] = None):
         """
         Инициализация клиента API Неосинтез.
 
         Args:
-            settings: Настройки подключения к API
+            settings: Настройки подключения к API. Если не указаны,
+                      будут использованы настройки по умолчанию.
         """
-        self.settings = settings
+        self.settings = settings or NeosintezConfig()
         self.token: Optional[str] = None
         self._session: Optional[aiohttp.ClientSession] = None
 
