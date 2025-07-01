@@ -5,8 +5,8 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import AnyHttpUrl
-from pydantic_settings import BaseSettings
+from pydantic import AnyHttpUrl, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class NeosintezConfig(BaseSettings):
@@ -27,16 +27,17 @@ class NeosintezConfig(BaseSettings):
         test_folder_id_2: ID второй тестовой папки для создания объектов в тестах
     """
 
-    base_url: AnyHttpUrl
-    username: str
-    password: str
+    base_url: AnyHttpUrl = Field("https://construction.irkutskoil.ru/", alias="NEOSINTEZ_BASE_URL")
+    username: str = Field("InkTool", alias="NEOSINTEZ_USERNAME")
+    password: str = Field("---", alias="NEOSINTEZ_PASSWORD")
     client_id: str
     client_secret: str
     max_connections: int = 100
     timeout: int = 60
-    verify_ssl: bool = True
+    verify_ssl: bool = Field(True, alias="NEOSINTEZ_VERIFY_SSL")
     test_folder_id: Optional[str] = None
     test_folder_id_2: Optional[str] = None
+    request_timeout: int = Field(60, alias="NEOSINTEZ_REQUEST_TIMEOUT")
 
     # Настройки кэша метаданных
     metadata_cache_ttl: int = 1800  # 30 минут в секундах
@@ -49,14 +50,12 @@ class NeosintezConfig(BaseSettings):
     retry_max_wait: float = 60.0  # Максимальная задержка в секундах
     retry_jitter: bool = True  # Добавлять случайный джиттер
 
-    class Config:
-        """Конфигурация настроек."""
-
-        env_prefix = "NEOSINTEZ_"
-        case_sensitive = False
-        validate_by_name = True
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_prefix="NEOSINTEZ_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache

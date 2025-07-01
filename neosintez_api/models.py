@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class TokenResponse(BaseModel):
@@ -239,11 +239,9 @@ class AttributeModel(BaseModel):
     value: Any = Field(alias="Value")
     value_type: Optional[int] = Field(None, alias="Type")
 
-    class Config:
-        """Конфигурация модели."""
-
-        validate_by_name = True
-        """Разрешает заполнение модели как по именам полей, так и по алиасам."""
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
 
 
 class EquipmentModel(BaseModel):
@@ -270,7 +268,6 @@ class EquipmentModel(BaseModel):
     installation_date: datetime = Field(alias="Дата установки")
     is_active: bool = Field(True, alias="Активен")
 
-    class Config:
-        """Конфигурация модели."""
-
-        validate_by_name = True
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
