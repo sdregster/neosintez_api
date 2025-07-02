@@ -13,7 +13,7 @@ from uuid import UUID
 
 from neosintez_api.config import settings
 from neosintez_api.core.client import NeosintezClient
-from neosintez_api.services import DynamicModelFactory, ObjectService
+from neosintez_api.services import ClassService, DynamicModelFactory, ObjectService
 
 
 # Настройка логирования для отладки
@@ -45,6 +45,7 @@ async def main():
 
     client = NeosintezClient()
     object_service = ObjectService(client)
+    class_service = ClassService(client)  # Создаем сервис для работы с кэшем
     created_object_id: UUID | None = None
 
     def wait_for_user_input(object_id: UUID | None, step_name: str):
@@ -60,6 +61,7 @@ async def main():
     # Инициализируем фабрику с клиентом и возможными названиями ключевых полей
     factory = DynamicModelFactory(
         client=client,
+        class_service=class_service,  # Передаем сервис с кэшем
         name_aliases=["Имя объекта", "Наименование", "Name"],
         class_name_aliases=["Класс", "Имя класса", "className"],
     )

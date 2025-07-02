@@ -12,6 +12,7 @@ from neosintez_api.services.object_search_service import ObjectSearchService
 from neosintez_api.utils import generate_field_name, neosintez_type_to_python_type
 
 from ..resolvers import AttributeResolver
+from ..class_service import ClassService
 
 
 if TYPE_CHECKING:
@@ -96,10 +97,12 @@ class DynamicModelFactory:
     def __init__(
         self,
         client: "NeosintezClient",
+        class_service: "ClassService",
         name_aliases: List[str],
         class_name_aliases: List[str],
     ):
         self.client = client
+        self.class_service = class_service  # Используем переданный сервис
         self.name_aliases = [alias.lower() for alias in name_aliases]
         self.class_name_aliases = [alias.lower() for alias in class_name_aliases]
         self.search_service = ObjectSearchService(self.client)
@@ -128,20 +131,24 @@ class DynamicModelFactory:
         if not class_name_to_find:
             raise ValueError(f"В данных не найдено имя класса. Ожидался один из ключей: {self.class_name_aliases}")
 
-        # 2. Получаем метаданные для класса
-        class_info_list = await self.client.classes.get_classes_by_name(class_name_to_find)
+        # 2. Получаем метаданные для класса из кэширующего сервиса
+        # Кэш уже должен быть заполнен на уровне ExcelImporter
+        class_info_list = await self.class_service.find_by_name(class_name_to_find)
         if not class_info_list:
             raise ValueError(f"Класс '{class_name_to_find}' не найден в Неосинтезе.")
 
         # Ищем точное совпадение по имени, игнорируя регистр
-        class_info = next((c for c in class_info_list if c["name"].lower() == class_name_to_find.lower()), None)
+        class_info = next(
+            (c for c in class_info_list if c.Name.lower() == class_name_to_find.lower()),
+            None,
+        )
         if not class_info:
             raise ValueError(
                 f"Найдено несколько классов, похожих на '{class_name_to_find}', но точное совпадение отсутствует."
             )
 
-        class_id = class_info["id"]
-        class_attributes = await self.client.classes.get_attributes(class_id)
+        class_id = str(class_info.Id)
+        class_attributes = await self.class_service.get_attributes(class_id)
         attributes_meta_map = {attr.Name: attr for attr in class_attributes}
 
         # 3. Вызываем внутренний метод-строитель с полной мета-информацией
