@@ -30,7 +30,7 @@ def real_settings() -> NeosintezConfig:
     return NeosintezConfig()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="function")
 async def real_client(real_settings: NeosintezConfig) -> NeosintezClient:
     """
     Настоящий клиент API для интеграционных тестов.
@@ -119,3 +119,15 @@ def sample_object_data():
             "f980619f-b547-ee11-917e-005056b6948b": {"Value": 876, "Type": 1},
         },
     }
+
+
+@pytest.fixture(scope="session")
+def test_class_id_with_children() -> str:
+    """Возвращает ID класса, у которого точно есть дочерние объекты."""
+    return "3aa54908-2283-ec11-911c-005056b6948b"
+
+
+@pytest.fixture(scope="session")
+def test_parent_id_with_children() -> str:
+    """Возвращает ID родительского объекта, у которого точно есть дочерние объекты."""
+    return "b8a4f94b-c782-ec11-911c-005056b6948b"

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TokenResponse(BaseModel):
@@ -106,10 +106,21 @@ class AttributeType(BaseModel):
 
 class AttributeConstraint(BaseModel):
     """
-    Ограничения для атрибута объекта.
+    Ограничения для атрибута-ссылки.
+
+    Описывает правила, по которым можно выбирать значение для ссылочного
+    атрибута. Например, ограничивает выбор объектов определенным классом
+    или деревом объектов.
+
+    Attributes:
+        Type: Тип ограничения (1 - по классу, 3 - по корневому объекту).
+        EntityId: ID класса, которым ограничивается выбор.
+        ObjectRootId: ID корневого объекта, в рамках которого ведется поиск.
     """
 
-    pass
+    Type: int
+    EntityId: Optional[UUID] = None
+    ObjectRootId: Optional[UUID] = None
 
 
 class Attribute(BaseModel):
@@ -132,7 +143,7 @@ class Attribute(BaseModel):
     Id: UUID
     Name: str
     Type: Optional[Union[AttributeType, int]] = None
-    Constraints: List[AttributeConstraint] = Field(default_factory=list)
+    Constraints: Optional[List[AttributeConstraint]] = Field(default_factory=list)
     Description: Optional[str] = None
     EntityId: Optional[UUID] = None
     IsCollection: Optional[bool] = None
@@ -167,7 +178,7 @@ class AttributeValue(BaseModel):
     Type: Optional[str] = None
 
 
-class Object(BaseModel):
+class NeoObject(BaseModel):
     """
     Объект в системе Неосинтез.
 
@@ -186,6 +197,18 @@ class Object(BaseModel):
     Attributes: Optional[Dict[str, Any]] = None
 
 
+class SearchResultObject(BaseModel):
+    """
+    Объект, возвращаемый в результатах поиска.
+    Содержит сам объект и информацию о его родителе.
+    """
+
+    obj: NeoObject = Field(alias="Object")
+    parent: Optional[NeoObject] = Field(default=None, alias="Parent")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class SearchResponse(BaseModel):
     """
     Ответ на поисковый запрос.
@@ -195,7 +218,7 @@ class SearchResponse(BaseModel):
         Total: Общее количество найденных объектов
     """
 
-    Result: List[Object]
+    Result: List[SearchResultObject]
     Total: int
 
 

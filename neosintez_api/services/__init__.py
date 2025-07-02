@@ -6,6 +6,7 @@ from .cache import TTLCache
 from .class_service import ClassService
 from .factories import DynamicModelFactory, ObjectBlueprint, ObjectToModelFactory
 from .mappers import ObjectMapper
+from .object_search_service import ObjectSearchService
 from .object_service import ObjectService
 
 
@@ -17,4 +18,5 @@ __all__ = [
     "DynamicModelFactory",
     "ObjectToModelFactory",
     "ObjectBlueprint",
+    "ObjectSearchService",
 ]

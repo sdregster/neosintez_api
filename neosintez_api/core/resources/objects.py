@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
 from ...models import (
-    Object,
+    NeoObject,
     PathAncestor,
     PathResponse,
     SearchFilter,
@@ -29,7 +29,7 @@ class ObjectsResource(BaseResource):
     Ресурсный класс для работы с объектами в API Неосинтез.
     """
 
-    async def get_by_id(self, object_id: Union[str, UUID]) -> Object:
+    async def get_by_id(self, object_id: Union[str, UUID]) -> NeoObject:
         """
         Получает объект по его ID.
 
@@ -37,7 +37,7 @@ class ObjectsResource(BaseResource):
             object_id: ID объекта
 
         Returns:
-            Object: Объект
+            NeoObject: Объект
 
         Raises:
             NeosintezAPIError: Если объект не найден
@@ -50,7 +50,7 @@ class ObjectsResource(BaseResource):
             if "Entity" in result and isinstance(result["Entity"], dict) and "Id" in result["Entity"]:
                 result["EntityId"] = result["Entity"]["Id"]
 
-            return Object.model_validate(result)
+            return NeoObject.model_validate(result)
 
         from ...exceptions import NeosintezAPIError
 
@@ -113,7 +113,7 @@ class ObjectsResource(BaseResource):
         await self._request("DELETE", endpoint)
         return True
 
-    async def get_children(self, parent_id: Union[str, UUID]) -> List[Object]:
+    async def get_children(self, parent_id: Union[str, UUID]) -> List[NeoObject]:
         """
         Получает список дочерних объектов для заданного родительского объекта.
 
@@ -121,13 +121,13 @@ class ObjectsResource(BaseResource):
             parent_id: ID родительского объекта
 
         Returns:
-            List[Object]: Список дочерних объектов
+            List[NeoObject]: Список дочерних объектов
         """
         endpoint = f"api/objects/{parent_id}/children"
 
         result = await self._request("GET", endpoint)
         if isinstance(result, list):
-            return [Object.model_validate(item) for item in result]
+            return [NeoObject.model_validate(item) for item in result]
         return []
 
     async def search(
@@ -137,15 +137,15 @@ class ObjectsResource(BaseResource):
         skip: Optional[int] = None,
     ) -> SearchResponse:
         """
-        Выполняет поиск объектов по заданным критериям.
+        Выполняет поисковый запрос к API.
 
         Args:
-            request: Запрос на поиск
-            take: Количество записей для выборки (переопределяет значение в request)
-            skip: Смещение для пагинации (переопределяет значение в request)
+            request: Тело запроса для поиска.
+            take: Количество записей для возврата.
+            skip: Количество записей для пропуска.
 
         Returns:
-            SearchResponse: Результаты поиска
+            Ответ API с результатами поиска.
         """
         if take is not None:
             request.Take = take
@@ -161,10 +161,24 @@ class ObjectsResource(BaseResource):
 
         headers = {"X-HTTP-Method-Override": "GET"}
 
-        result = await self._request("POST", endpoint, params=params, data=request, headers=headers)
-        return SearchResponse.model_validate(result)
+        raw_result = await self._request("POST", endpoint, params=params, data=request, headers=headers)
 
-    async def search_all(self, request: SearchRequest) -> List[Object]:
+        # Прокидываем вложенный Entity.Id в EntityId для каждого объекта в результате
+        if "Result" in raw_result and isinstance(raw_result["Result"], list):
+            for item in raw_result["Result"]:
+                if (
+                    isinstance(item, dict)
+                    and "Object" in item
+                    and isinstance(item["Object"], dict)
+                    and "Entity" in item["Object"]
+                    and isinstance(item["Object"]["Entity"], dict)
+                    and "Id" in item["Object"]["Entity"]
+                ):
+                    item["Object"]["EntityId"] = item["Object"]["Entity"]["Id"]
+
+        return SearchResponse.model_validate(raw_result)
+
+    async def search_all(self, request: SearchRequest) -> List[NeoObject]:
         """
         Выполняет поиск всех объектов по заданным критериям с автоматической пагинацией.
 
@@ -172,13 +186,14 @@ class ObjectsResource(BaseResource):
             request: Запрос на поиск
 
         Returns:
-            List[Object]: Все найденные объекты
+            List[NeoObject]: Все найденные объекты
         """
         limit = 500
         first_response = await self.search(request, take=limit, skip=0)
 
         total_items = first_response.Total
-        items = first_response.Result
+        # Извлекаем непосредственно объекты из результатов поиска
+        items = [res.obj for res in first_response.Result]
 
         if total_items > limit:
             total_pages = (total_items + limit - 1) // limit
@@ -191,7 +206,7 @@ class ObjectsResource(BaseResource):
             if tasks:
                 responses = await asyncio.gather(*tasks)
                 for response in responses:
-                    items.extend(response.Result)
+                    items.extend([res.obj for res in response.Result])
 
         return items
 
@@ -316,7 +331,7 @@ class ObjectsResource(BaseResource):
         self,
         class_id: Union[str, UUID],
         parent_id: Union[str, UUID],
-    ) -> List[Object]:
+    ) -> List[NeoObject]:
         """
         Получает объекты указанного класса с указанным родителем.
 
@@ -325,7 +340,7 @@ class ObjectsResource(BaseResource):
             parent_id: ID родительского объекта
 
         Returns:
-            List[Object]: Список найденных объектов
+            List[NeoObject]: Список найденных объектов
         """
         filters = [
             SearchFilter(Type=4, Value=str(parent_id)),

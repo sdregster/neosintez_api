@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
+from neosintez_api.services.object_search_service import ObjectSearchService
 from neosintez_api.utils import generate_field_name, neosintez_type_to_python_type
 
 
 if TYPE_CHECKING:
-    pass
+    from neosintez_api.core.client import NeosintezClient
 
 
 class ObjectBlueprint(NamedTuple):
@@ -67,9 +68,16 @@ class DynamicModelFactory:
     и создает единую, плоскую Pydantic модель для его представления.
     """
 
-    def __init__(self, name_aliases: List[str], class_name_aliases: List[str]):
+    def __init__(
+        self,
+        client: "NeosintezClient",
+        name_aliases: List[str],
+        class_name_aliases: List[str],
+    ):
+        self.client = client
         self.name_aliases = [alias.lower() for alias in name_aliases]
         self.class_name_aliases = [alias.lower() for alias in class_name_aliases]
+        self.search_service = ObjectSearchService(self.client)
 
     def _find_and_extract(self, data: Dict[str, Any], aliases: List[str]) -> (str, Any):
         """Находит ключ по одному из алиасов, возвращает его и значение."""
@@ -100,6 +108,58 @@ class DynamicModelFactory:
 
         # 3. Готовим справочник метаданных по имени атрибута
         attr_lookup = {attr_data.Name: attr_data for attr_data in attributes_meta.values()}
+
+        # Обрабатываем ссылочные атрибуты
+        for attr_name, attr_value in attribute_data.items():
+            meta = attr_lookup.get(attr_name)
+            if meta and meta.Type == 8 and isinstance(attr_value, str):  # 8 - Ссылка на объект
+                # Вспомогательная функция для извлечения значений из Constraints.
+                # Работает с реальной структурой AttributeConstraint.
+                def get_constraint_ids() -> (Optional[str], Optional[str]):
+                    """
+                    Извлекает ID класса и ID корневого объекта из ограничений.
+                    Возвращает (class_id, root_id)
+                    """
+                    linked_class_id, parent_id = None, None
+                    if not isinstance(meta.Constraints, list):
+                        return None, None
+
+                    for constraint in meta.Constraints:
+                        # Ограничение по классу (Type=1) указывает на класс справочника.
+                        if constraint.Type == 1 and constraint.EntityId:
+                            linked_class_id = str(constraint.EntityId)
+                        # Ограничение по корневому объекту (Type=3) указывает на родителя
+                        # (сам справочник, в котором ищем значение).
+                        elif constraint.Type == 3 and constraint.ObjectRootId:
+                            parent_id = str(constraint.ObjectRootId)
+                    return linked_class_id, parent_id
+
+                linked_class_id, parent_id = get_constraint_ids()
+
+                if not linked_class_id:
+                    raise ValueError(
+                        f"Не удалось извлечь ID класса справочника (Constraint Type 1) для атрибута '{attr_name}'"
+                    )
+
+                # 1. Получаем все возможные варианты для справочника
+                possible_options = await self.search_service.find_objects_by_class(
+                    class_id=linked_class_id, parent_id=parent_id
+                )
+
+                # 2. Ищем точное совпадение по имени среди вариантов
+                found_option = None
+                for option in possible_options:
+                    if option.Name.lower() == attr_value.lower():
+                        found_option = option
+                        break
+
+                # 3. Подставляем ID или вызываем ошибку
+                if found_option:
+                    attribute_data[attr_name] = found_option.Id
+                else:
+                    raise ValueError(
+                        f"Не удалось найти связанный объект с именем '{attr_value}' для атрибута '{attr_name}'."
+                    )
 
         # 4. Создаем Pydantic модель с помощью общей функции
         UnifiedObjectModel = _create_pydantic_model(class_name, attr_lookup)

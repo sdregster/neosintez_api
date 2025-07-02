@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, Generic, List, Type, Union
 from uuid import UUID
 
 from neosintez_api.core.exceptions import NeosintezAPIError
+
 from ..utils import generate_field_name
 from .mappers.object_mapper import ObjectMapper
 from .models import BulkCreateResult, CreateRequest, T

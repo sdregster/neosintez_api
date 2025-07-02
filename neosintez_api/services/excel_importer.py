@@ -10,8 +10,9 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel
 
-from ..core.client import NeosintezClient
 from neosintez_api.core.exceptions import NeosintezAPIError
+
+from ..core.client import NeosintezClient
 from .factories import DynamicModelFactory
 from .object_service import CreateRequest, ObjectService
 

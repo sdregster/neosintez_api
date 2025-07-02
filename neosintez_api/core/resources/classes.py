@@ -6,9 +6,9 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from neosintez_api.core.exceptions import NeosintezAPIError
+from neosintez_api.core.resources.base import BaseResource
 from neosintez_api.models import Attribute, EntityClass
 from neosintez_api.services.cache import TTLCache
-from neosintez_api.core.resources.base import BaseResource
 
 
 # Настройка логгера

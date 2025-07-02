@@ -1,11 +1,14 @@
 """
 Тестовый скрипт для демонстрации работы DynamicModelFactory.
+
+Скрипт показывает, как фабрика обрабатывает простые типы данных (строки, числа)
+и разрешает ссылочные атрибуты, превращая текстовые значения ("Да")
+в реальные идентификаторы объектов (GUID) из связанных справочников.
 """
 
 import asyncio
 import traceback
 
-from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
 from neosintez_api.services import DynamicModelFactory
 from neosintez_api.utils import generate_field_name
@@ -21,19 +24,20 @@ async def main():
     """
     user_defined_data = {
         "Класс": "Стройка",
-        "Имя объекта": "Тестовая стройка из публичного API",
+        "Имя объекта": "Тестовая стройка из API со ссылкой",
         "МВЗ": "МВЗ_PUBLIC_777",
         "ID стройки Адепт": 54321,
+        "ИР Адепт - Primavera": "Да",
     }
 
-    # Инициализируем фабрику с возможными названиями ключевых полей
+    client = NeosintezClient()
+
+    # Инициализируем фабрику с клиентом и возможными названиями ключевых полей
     factory = DynamicModelFactory(
+        client=client,
         name_aliases=["Имя объекта", "Наименование", "Name"],
         class_name_aliases=["Класс", "Имя класса", "className"],
     )
-
-    settings = NeosintezConfig()
-    client = NeosintezClient(settings)
 
     try:
         # Получаем метаданные для класса перед вызовом фабрики
@@ -65,6 +69,16 @@ async def main():
         mvz_field_name = generate_field_name("МВЗ")
         print(
             f"  - blueprint.model_instance.{mvz_field_name} = {getattr(blueprint.model_instance, mvz_field_name)}"
+        )
+
+        print("\nПроверка доступа к ссылочному полю 'ИР Адепт - Primavera':")
+        primavera_field_name = generate_field_name("ИР Адепт - Primavera")
+        primavera_value = getattr(blueprint.model_instance, primavera_field_name)
+        print(
+            f"  - blueprint.model_instance.{primavera_field_name} = {primavera_value}"
+        )
+        print(
+            f"  - Обратите внимание, что строковое значение 'Да' было преобразовано в ID объекта: {primavera_value}"
         )
 
     except Exception as e:
