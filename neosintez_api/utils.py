@@ -525,7 +525,9 @@ def generate_field_name(display_name: str) -> str:
 def neosintez_type_to_python_type(neo_type: int) -> Type:
     """Конвертирует числовой тип атрибута из Неосинтеза в тип Python."""
     if neo_type == 1:
-        return int
+        # Используем float, так как он может принимать и int, и float.
+        # Это решает проблему, когда API возвращает число с плавающей точкой.
+        return float
     elif neo_type == 2:
         return str
     else:

@@ -41,6 +41,7 @@ async def main():
         "МВЗ": "МВЗ_DYNAMIC_999",
         "ID стройки Адепт": 98765,
         "ИР Адепт - Primavera": "Да",  # Это значение будет разрешено в ID
+        "Процент комплектации": 80.5,
     }
 
     client = NeosintezClient()
@@ -62,8 +63,8 @@ async def main():
     factory = DynamicModelFactory(
         client=client,
         class_service=class_service,  # Передаем сервис с кэшем
-        name_aliases=["Имя объекта", "Наименование", "Name"],
-        class_name_aliases=["Класс", "Имя класса", "className"],
+        name_aliases=["Имя объекта"],
+        class_name_aliases=["Класс"],
     )
 
     try:
