@@ -45,6 +45,7 @@ class StroykaModel(NeosintezBaseModel):
     # Для ссылочного атрибута мы просто указываем строковый тип.
     # "Под капотом" сервис сам найдет нужный объект по имени.
     ir_adep_primavera: str = Field(..., alias="ИР Адепт - Primavera")
+    procent_komplekta: float = Field(..., alias="Процент комплектации")
 
 
 async def main():
@@ -73,6 +74,7 @@ async def main():
             mvz="МВЗ_PUBLIC_123",
             id_stroyki_adep=12345,
             ir_adep_primavera="Да",  # Указываем человекочитаемое значение
+            procent_komplekta=80.5,
         )
         print("Модель для создания:")
         print(stroyka_instance.model_dump_json(indent=2, by_alias=True))
@@ -87,6 +89,7 @@ async def main():
         assert created_object.name == stroyka_instance.name
         assert created_object.mvz == stroyka_instance.mvz
         assert created_object.ir_adep_primavera == "Да"
+        assert created_object.procent_komplekta == 80.5
         print("✓ Проверка CREATE пройдена.")
 
         wait_for_user_input(created_object_id, "CREATE")
@@ -103,6 +106,7 @@ async def main():
         assert read_object.name == "Тестовая стройка CRUD"
         assert read_object.mvz == "МВЗ_PUBLIC_123"
         assert read_object._id == created_object_id
+        assert read_object.procent_komplekta == 80.5
         print("✓ Проверка READ пройдена.")
 
         # ======================================================================
@@ -128,6 +132,7 @@ async def main():
         assert re_read_object.ir_adep_primavera == "Нет"
         assert re_read_object._parent_id == settings.test_folder_id_2
         assert updated_object == re_read_object
+        assert re_read_object.procent_komplekta == 80.5
         print("✓ Проверка UPDATE пройдена: имя, атрибут и родитель обновлены.")
         print("✓ Ответ от `update` соответствует данным в системе.")
 
@@ -156,11 +161,12 @@ async def main():
         assert final_read_object.name == "Финальное имя после второго обновления"
         assert final_read_object.mvz == "FINAL_MVZ"
         assert final_read_object._parent_id == settings.test_folder_id_2
+        assert final_read_object.procent_komplekta == 80.5
 
         # Сверяем значения, возвращенные методом update, с заданными
         assert final_updated_object.name == "Финальное имя после второго обновления"
         assert final_updated_object.mvz == "FINAL_MVZ"
-
+        assert final_updated_object.procent_komplekta == 80.5
         # Убеждаемся, что модель из update и модель из read идентичны
         assert final_read_object == final_updated_object
 
