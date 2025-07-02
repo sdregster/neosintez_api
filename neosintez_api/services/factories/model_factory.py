@@ -11,8 +11,8 @@ from neosintez_api.models import NeosintezBaseModel
 from neosintez_api.services.object_search_service import ObjectSearchService
 from neosintez_api.utils import generate_field_name, neosintez_type_to_python_type
 
-from ..resolvers import AttributeResolver
 from ..class_service import ClassService
+from ..resolvers import AttributeResolver
 
 
 if TYPE_CHECKING:

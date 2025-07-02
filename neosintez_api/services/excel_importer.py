@@ -263,7 +263,7 @@ class ExcelImporter:
             for level in sorted(objects_by_level.keys()):
                 logger.info(f"Создание объектов на уровне {level}")
                 requests_to_process = []
-                
+
                 for obj_data in objects_by_level[level]:
                     # Заменяем виртуальный родительский ID на реальный
                     virtual_parent_id = obj_data["parent_id"]
@@ -285,11 +285,17 @@ class ExcelImporter:
                         }
                         # Фабрика вернет "чертеж" с готовой моделью
                         blueprint = await self.factory.create(user_data_for_factory)
-                        
+
+                        # Добавляем запрос в список на обработку,
+                        # передавая всю необходимую мета-информацию
                         requests_to_process.append(
                             CreateRequest(
                                 model=blueprint.model_instance,
-                                virtual_id=obj_data.get("virtual_id")
+                                class_id=blueprint.class_id,
+                                class_name=blueprint.class_name,
+                                attributes_meta=blueprint.attributes_meta,
+                                parent_id=real_parent_id,
+                                virtual_id=obj_data["virtual_id"],
                             )
                         )
                     except Exception as e:
@@ -302,20 +308,43 @@ class ExcelImporter:
 
                 # Пакетное создание объектов на текущем уровне
                 try:
-                    creation_results = await self.object_service.batch_create(requests_to_process)
-                    
-                    for res in creation_results:
-                        if res.success and res.data:
-                            # Обновляем карту ID
-                            if res.virtual_id:
-                                virtual_to_real_id_map[res.virtual_id] = res.data.id
-                            
-                            created_objects.append(res.data.model_dump())
+                    # Используем корректный метод create_many
+                    creation_result = await self.object_service.create_many(requests_to_process)
+
+                    # Обрабатываем успешные результаты
+                    for created_model in creation_result.created_models:
+                        # Находим исходный запрос по инстансу модели.
+                        # Это надежно, так как ObjectService мутирует исходный объект.
+                        original_request = next(
+                            (req for req in requests_to_process if req.model is created_model),
+                            None,
+                        )
+                        if original_request:
+                            virtual_id = original_request.virtual_id
+                            real_id = created_model._id
+                            virtual_to_real_id_map[virtual_id] = real_id
+
+                            # Ищем исходные данные по virtual_id для отчета
+                            source_data = next(
+                                (obj for obj in preview.objects_to_create if obj.get("virtual_id") == virtual_id), {}
+                            )
+                            created_objects.append(
+                                {
+                                    "id": real_id,
+                                    "name": created_model.name,
+                                    "class_name": created_model.Neosintez.class_name,
+                                    "level": source_data.get("level", -1),
+                                }
+                            )
                             created_by_level[level] = created_by_level.get(level, 0) + 1
                         else:
-                            error_msg = f"Не удалось создать объект (virtual_id: {res.virtual_id}): {res.error}"
-                            logger.error(error_msg)
-                            errors.append(error_msg)
+                            logger.warning(
+                                f"Не удалось найти исходный запрос для созданного объекта с ID {created_model._id}"
+                            )
+
+                    # Добавляем ошибки из результата пакетной операции
+                    if creation_result.errors:
+                        errors.extend(creation_result.errors)
 
                 except Exception as e:
                     error_msg = f"Критическая ошибка при пакетном создании объектов на уровне {level}: {e}"
@@ -342,7 +371,7 @@ class ExcelImporter:
                 errors=[f"Критическая ошибка: {e}"],
                 duration_seconds=(datetime.now() - start_time).total_seconds(),
             )
-            
+
     def _check_headers(self, df: pd.DataFrame) -> bool:
         """Проверяет, содержит ли первая строка в DataFrame заголовки."""
         if df.empty:
@@ -380,7 +409,7 @@ class ExcelImporter:
         try:
             # Читаем только первый лист, если имя не указано
             sheet_to_read = worksheet_name or 0
-            
+
             # Сначала читаем без заголовков, чтобы проверить их наличие
             df_no_header = pd.read_excel(excel_path, sheet_name=sheet_to_read, header=None)
 
@@ -394,9 +423,7 @@ class ExcelImporter:
         except Exception as e:
             logger.error(f"Не удалось прочитать Excel файл: {e}", exc_info=True)
             # Используем корректный конструктор исключения
-            raise NeosintezAPIError(
-                message=f"Не удалось прочитать Excel файл: {e}", status_code=400
-            ) from e
+            raise NeosintezAPIError(message=f"Не удалось прочитать Excel файл: {e}", status_code=400) from e
 
         objects_to_create = []
         parent_map: Dict[int, str] = {0: parent_id}  # level -> virtual_id
@@ -413,7 +440,7 @@ class ExcelImporter:
                 name = str(row.iloc[structure.name_column])
 
                 # Пропускаем строки без класса или имени
-                if not class_name or not name or pd.isna(class_name) or pd.isna(name) or class_name.lower() == 'nan':
+                if not class_name or not name or pd.isna(class_name) or pd.isna(name) or class_name.lower() == "nan":
                     continue
 
                 # Создаем виртуальный ID для этого объекта
@@ -477,7 +504,9 @@ class ExcelImporter:
 
             for name in class_names_from_file:
                 if name not in class_name_map:
-                    original_name = next((obj["class_name"] for obj in objects_to_create if obj["class_name"].lower() == name), name)
+                    original_name = next(
+                        (obj["class_name"] for obj in objects_to_create if obj["class_name"].lower() == name), name
+                    )
                     errors.append(f"Класс '{original_name}' не найден в Неосинтезе.")
 
             if errors:
