@@ -53,6 +53,16 @@ async def main():
     object_service = ObjectService(client)
     created_object_id = None
 
+    def wait_for_user_input(object_id: str | None, step_name: str):
+        """Формирует ссылку на объект и ждет ввода от пользователя."""
+        if object_id:
+            # Убираем возможный слэш в конце, чтобы избежать двойных //
+            base_url = str(settings.base_url).rstrip("/")
+            object_url = f"{base_url}/objects?id={object_id}"
+            print(f"\n--- Шаг '{step_name}' завершен ---")
+            print(f"Ссылка на объект для проверки: {object_url}")
+            input(">>> Нажмите Enter для перехода к следующему шагу...")
+
     try:
         # ======================================================================
         # 1. CREATE: Создание объекта в Неосинтезе
@@ -78,6 +88,8 @@ async def main():
         assert created_object.mvz == stroyka_instance.mvz
         assert created_object.ir_adep_primavera == "Да"
         print("✓ Проверка CREATE пройдена.")
+
+        wait_for_user_input(created_object_id, "CREATE")
 
         # ======================================================================
         # 2. READ: Чтение созданного объекта
@@ -119,6 +131,8 @@ async def main():
         print("✓ Проверка UPDATE пройдена: имя, атрибут и родитель обновлены.")
         print("✓ Ответ от `update` соответствует данным в системе.")
 
+        wait_for_user_input(created_object_id, "UPDATE (1/2)")
+
         # ======================================================================
         # 4. UPDATE (CHAINED): Повторное обновление
         # ======================================================================
@@ -152,6 +166,8 @@ async def main():
 
         print("✓ Проверка второго UPDATE пройдена: финальное имя и атрибут корректны.")
         print("✓ Ответ от `update` полностью соответствует данным в системе.")
+
+        wait_for_user_input(created_object_id, "UPDATE (2/2)")
 
         # ======================================================================
         # 5. DELETE

@@ -303,10 +303,19 @@ class ObjectService(Generic[T]):
 
                     flat_data[field_name] = attr_value
 
-            # 6. Создаем экземпляр модели
-            instance = model_class(**flat_data)
+            # "Выпрямляем" ссылочные атрибуты: из {Id:.., Name: ..} делаем просто Name
+            for key, value in flat_data.items():
+                if isinstance(value, dict) and "Name" in value:
+                    flat_data[key] = value["Name"]
 
-            # Если это наша декларативная модель, заполняем системные поля
+            # 6. Создаем экземпляр модели
+            try:
+                instance = model_class(**flat_data)
+            except Exception as e:
+                logger.error(f"Ошибка при чтении объекта {object_id}: {e}")
+                raise
+
+            # 7. Если это наша базовая модель, заполняем системные поля
             from neosintez_api.models import NeosintezBaseModel
 
             if isinstance(instance, NeosintezBaseModel):

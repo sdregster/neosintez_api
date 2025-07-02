@@ -3,10 +3,11 @@
 """
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, Field, create_model
 
+from neosintez_api.models import NeosintezBaseModel
 from neosintez_api.services.object_search_service import ObjectSearchService
 from neosintez_api.utils import generate_field_name, neosintez_type_to_python_type
 
@@ -39,37 +40,49 @@ class ObjectBlueprint:
     errors: List[str] = field(default_factory=list)
 
 
-def _create_pydantic_model(class_name: str, attributes_meta: Dict[str, Any]) -> type[BaseModel]:
+def _create_pydantic_model(class_name: str, attributes_meta: Dict[str, Any]) -> type["NeosintezBaseModel"]:
     """
-    Создает Pydantic-модель на основе метаданных класса.
-    Используется обеими фабриками.
+    Создает Pydantic-модель, унаследованную от NeosintezBaseModel.
     """
-    # 4. Определяем поля для динамических атрибутов
+    # 1. Определяем поля для динамических атрибутов
     dynamic_fields = {}
     for attr_name, meta in attributes_meta.items():
         field_name = generate_field_name(attr_name)
-        python_type = neosintez_type_to_python_type(meta.Type if hasattr(meta, "Type") else None)
-        # Для чтения делаем все поля опциональными (None)
+
+        # Если тип атрибута - ссылка (8), принудительно используем str.
+        # Это позволяет унифицировать обработку ссылок в ObjectService.
+        if hasattr(meta, "Type") and meta.Type == 8:  # 8 = Ссылка на объект
+            python_type = str
+        else:
+            python_type = neosintez_type_to_python_type(meta.Type if hasattr(meta, "Type") else None)
+
         dynamic_fields[field_name] = (
             Optional[python_type],
             Field(None, alias=attr_name),
         )
 
-    # 5. Определяем статические поля, которые есть у любого объекта
-    static_fields = {
-        "id": (Optional[str], Field(None, description="ID объекта в Неосинтезе")),
-        "class_id": (Optional[str], Field(None, description="ID класса объекта")),
-        "parent_id": (Optional[str], Field(None, description="ID родительского объекта")),
+    # 2. Создаем временный базовый класс с нужной мета-информацией.
+    #    Это решает проблему области видимости Python для `class_name`.
+    class _Neosintez:
+        pass
+
+    _Neosintez.class_name = class_name
+
+    class TempBase(NeosintezBaseModel):
+        Neosintez: ClassVar = _Neosintez
+
+    # 3. Собираем все поля вместе. 'name' обязателен для ObjectService.
+    fields_to_add = {
         "name": (str, Field(..., description="Имя объекта")),
+        **dynamic_fields,
     }
 
-    # 6. Создаем единую модель с "чистыми" именами полей и поддержкой алиасов
+    # 4. Динамически создаем финальную модель
     sanitized_class_name = "".join(filter(str.isalnum, class_name))
     UnifiedObjectModel = create_model(
-        f"{sanitized_class_name}ObjectModel",
-        **static_fields,
-        **dynamic_fields,
-        __config__=ConfigDict(populate_by_name=True),
+        f"{sanitized_class_name}DynamicModel",
+        **fields_to_add,
+        __base__=TempBase,
     )
     return UnifiedObjectModel
 
@@ -99,14 +112,54 @@ class DynamicModelFactory:
                 return key, value
         return None, None
 
-    async def create_from_user_data(
+    async def create(self, user_data: Dict[str, Any]) -> ObjectBlueprint:
+        """
+        Создает чертеж объекта из словаря, автоматически находя
+        имя класса и получая необходимые метаданные.
+
+        Args:
+            user_data: Словарь с данными, где один из ключей - имя класса.
+
+        Returns:
+            ObjectBlueprint: Готовый "чертеж" с Pydantic-моделью.
+        """
+        # 1. Извлекаем имя класса из данных
+        _, class_name_to_find = self._find_and_extract(user_data, self.class_name_aliases)
+        if not class_name_to_find:
+            raise ValueError(f"В данных не найдено имя класса. Ожидался один из ключей: {self.class_name_aliases}")
+
+        # 2. Получаем метаданные для класса
+        class_info_list = await self.client.classes.get_classes_by_name(class_name_to_find)
+        if not class_info_list:
+            raise ValueError(f"Класс '{class_name_to_find}' не найден в Неосинтезе.")
+
+        # Ищем точное совпадение по имени, игнорируя регистр
+        class_info = next((c for c in class_info_list if c["name"].lower() == class_name_to_find.lower()), None)
+        if not class_info:
+            raise ValueError(
+                f"Найдено несколько классов, похожих на '{class_name_to_find}', но точное совпадение отсутствует."
+            )
+
+        class_id = class_info["id"]
+        class_attributes = await self.client.classes.get_attributes(class_id)
+        attributes_meta_map = {attr.Name: attr for attr in class_attributes}
+
+        # 3. Вызываем внутренний метод-строитель с полной мета-информацией
+        return await self._create_with_metadata(
+            user_data=user_data,
+            class_name=class_name_to_find,
+            class_id=class_id,
+            attributes_meta=attributes_meta_map,
+        )
+
+    async def _create_with_metadata(
         self,
         user_data: Dict[str, Any],
         class_name: str,
         class_id: str,
         attributes_meta: Dict[str, Any],
     ) -> ObjectBlueprint:
-        """Основной метод фабрики."""
+        """Внутренний метод, создающий модель при наличии всех метаданных."""
         # 1. Извлекаем стандартную информацию
         original_name_key, object_name = self._find_and_extract(user_data, self.name_aliases)
         if not object_name:
@@ -125,19 +178,6 @@ class DynamicModelFactory:
         # 3. Готовим справочник метаданных по имени атрибута
         attr_lookup = {attr_data.Name: attr_data for attr_data in attributes_meta.values()}
 
-        # Обрабатываем ссылочные атрибуты
-        for attr_name, attr_value in attribute_data.items():
-            meta = attr_lookup.get(attr_name)
-            if meta and meta.Type == 8 and isinstance(attr_value, str):  # 8 - Ссылка на объект
-                try:
-                    resolved_obj = await self.resolver.resolve_link_attribute_as_object(
-                        attr_meta=meta, attr_value=attr_value
-                    )
-                    attribute_data[attr_name] = resolved_obj
-                except ValueError as e:
-                    # Можно здесь собирать ошибки, а не падать сразу
-                    raise e
-
         # 4. Создаем Pydantic модель с помощью общей функции
         UnifiedObjectModel = _create_pydantic_model(class_name, attr_lookup)
         print(f"Создана единая Pydantic-модель: '{UnifiedObjectModel.__name__}'")
@@ -145,7 +185,11 @@ class DynamicModelFactory:
         # 7. Готовим данные для создания экземпляра модели.
         # Используем исходные данные атрибутов (с "грязными" именами), так как они являются алиасами.
         validation_data = attribute_data.copy()
-        validation_data["name"] = object_name  # Добавляем имя объекта
+        # Имя объекта берется из специального поля, а не из атрибутов
+        name_key, name_value = self._find_and_extract(user_data, self.name_aliases)
+        if not name_value:
+            raise ValueError(f"Не удалось найти имя объекта по алиасам: {self.name_aliases}")
+        validation_data["name"] = name_value
 
         # 8. Создаем экземпляр через model_validate, который корректно работает с алиасами
         model_instance = UnifiedObjectModel.model_validate(validation_data)
