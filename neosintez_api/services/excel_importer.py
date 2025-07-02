@@ -72,6 +72,7 @@ class ExcelImporter:
         self.client = client
         self.object_service = ObjectService(client)
         self.factory = DynamicModelFactory(
+            client=self.client,
             name_aliases=self.NAME_COLUMN_NAMES,
             class_name_aliases=self.CLASS_COLUMN_NAMES,
         )
@@ -256,53 +257,39 @@ class ExcelImporter:
             # Итерируемся по уровням в отсортированном порядке
             for level in sorted(objects_by_level.keys()):
                 logger.info(f"Создание объектов уровня {level}. Количество: {len(objects_by_level[level])}")
-
                 requests_for_level: List[CreateRequest] = []
 
-                # Формируем запросы для текущего уровня
+                # Готовим пачку запросов для текущего уровня
                 for obj_data in objects_by_level[level]:
                     try:
-                        class_name = obj_data["class_name"]
-                        name = obj_data["name"]
+                        # Родитель должен быть уже создан на предыдущем шаге
                         virtual_parent_id = obj_data.get("parentId")
+                        real_parent_id = virtual_to_real_id_map.get(str(virtual_parent_id))
 
-                        parent_id_for_creation = virtual_to_real_id_map.get(virtual_parent_id)
-
-                        if not parent_id_for_creation:
-                            error_msg = (
-                                f"Не найден реальный ID родителя для '{name}' (виртуальный ID: {virtual_parent_id})"
-                            )
+                        if not real_parent_id:
+                            error_msg = f"Не найден реальный ID родителя для '{obj_data['name']}' (виртуальный ID: {virtual_parent_id})"
                             logger.error(error_msg)
                             errors.append(error_msg)
                             continue
 
-                        class_info = await self._get_class_by_name(class_name)
-                        class_id = class_info["Id"]
-
-                        # Получаем атрибуты класса один раз
-                        class_attributes = await self._get_class_attributes(class_id)
-
-                        # Готовим данные для фабрики: имя объекта + его атрибуты
+                        # Готовим данные для фабрики: все, что есть в строке Excel
                         user_data_for_factory = {
-                            self.NAME_COLUMN_NAMES[0]: name,
+                            "Класс": obj_data["class_name"],
+                            "Имя объекта": obj_data["name"],
                             **obj_data["attributes"],
                         }
 
-                        # Передаем метаданные в фабрику
-                        blueprint = await self.factory.create_from_user_data(
-                            user_data=user_data_for_factory,
-                            class_name=class_name,
-                            class_id=class_id,
-                            attributes_meta={attr.Name: attr for attr in class_attributes},
-                        )
+                        # Фабрика сама найдет класс и его атрибуты
+                        blueprint = await self.factory.create(user_data_for_factory)
 
+                        # Добавляем запрос в пачку
                         requests_for_level.append(
                             CreateRequest(
                                 model=blueprint.model_instance,
-                                class_id=class_id,
-                                class_name=class_name,
+                                class_id=blueprint.class_id,
+                                class_name=blueprint.class_name,
                                 attributes_meta=blueprint.attributes_meta,
-                                parent_id=parent_id_for_creation,
+                                parent_id=real_parent_id,
                             )
                         )
                     except Exception as e:
@@ -311,51 +298,49 @@ class ExcelImporter:
                         errors.append(error_msg)
 
                 if not requests_for_level:
-                    logger.warning(f"Нет запросов для создания на уровне {level}. Пропускаем.")
+                    logger.warning(f"Нет валидных запросов для создания на уровне {level}. Пропускаем.")
                     continue
 
                 # Выполняем массовое создание для текущего уровня
+                logger.info(f"Отправка {len(requests_for_level)} запросов на создание для уровня {level}...")
                 bulk_result = await self.object_service.create_many(requests_for_level)
 
                 # Обрабатываем результат
                 if bulk_result.errors:
-                    errors.extend(bulk_result.errors)
+                    for error in bulk_result.errors:
+                        logger.error(f"Ошибка при массовом создании на уровне {level}: {error}")
+                        errors.append(error)
 
-                # Создаем временный словарь для быстрого сопоставления запросов с результатами
-                # Ключ - (имя, ID родителя), значение - исходный словарь obj_data
+                # Сопоставляем созданные объекты с исходными данными
                 initial_requests_map = {
                     (req.model.name, str(req.parent_id)): obj_data
                     for req, obj_data in zip(requests_for_level, objects_by_level[level])
                 }
-                logger.debug(f"Карта запросов для уровня {level}: {list(initial_requests_map.keys())}")
 
-                # Обновляем карту ID и собираем статистику
-                for created_model in bulk_result.created_models:
-                    # Ищем исходный запрос по имени и ID родителя
-                    lookup_key = (created_model.name, str(created_model.parent_id))
-                    logger.debug(f"Поиск созданной модели по ключу: {lookup_key}")
+                for created_model, request in zip(bulk_result.created_models, requests_for_level):
+                    lookup_key = (created_model.name, str(request.parent_id))
                     original_obj_data = initial_requests_map.get(lookup_key)
 
-                    if original_obj_data and created_model.id:
+                    if original_obj_data and created_model._id:
                         virtual_id = original_obj_data.get("id")
                         if virtual_id:
-                            virtual_to_real_id_map[virtual_id] = created_model.id
-
-                        # Удаляем найденный ключ, чтобы обработать дубликаты имен, если они есть
-                        del initial_requests_map[lookup_key]
+                            virtual_to_real_id_map[virtual_id] = str(created_model._id)
 
                         created_objects.append(
                             {
-                                "id": created_model.id,
+                                "id": str(created_model._id),
                                 "name": created_model.name,
                                 "level": level,
-                                **original_obj_data,
+                                "class_name": original_obj_data["class_name"],
                             }
                         )
                         created_by_level[level] = created_by_level.get(level, 0) + 1
+                        # Удаляем, чтобы обработать возможные дубликаты имен
+                        del initial_requests_map[lookup_key]
                     else:
                         logger.warning(
-                            f"Не удалось сопоставить созданный объект '{created_model.name}' с исходными данными (ключ: {lookup_key})."
+                            f"Не удалось сопоставить созданный объект '{created_model.name}' "
+                            f"с исходными данными (ключ: {lookup_key})."
                         )
 
                 logger.debug(f"Карта ID после уровня {level}: {virtual_to_real_id_map}")
@@ -412,69 +397,75 @@ class ExcelImporter:
         """
         Загружает объекты из Excel и строит иерархическое дерево.
         """
-        if worksheet_name is None:
-            df = pd.read_excel(
-                excel_path, header=None if not self._check_headers(pd.read_excel(excel_path, header=None)) else 0
-            )
-        else:
-            df = pd.read_excel(
-                excel_path,
-                sheet_name=worksheet_name,
-                header=None
-                if not self._check_headers(pd.read_excel(excel_path, sheet_name=worksheet_name, header=None))
-                else 0,
-            )
+        try:
+            # Читаем Excel, определяя наличие заголовков
+            if worksheet_name is None:
+                df = pd.read_excel(excel_path, header=None)
+            else:
+                df = pd.read_excel(excel_path, sheet_name=worksheet_name, header=None)
 
-        data_start_row = 1 if self._check_headers(df) else 0
-        if not self._check_headers(df.head(1)):
-            df.columns = [f"Column_{i}" for i in range(df.shape[1])]
-            data_start_row = 0
-            headers = df.columns.tolist()
-        else:
-            headers = df.columns.tolist()  # Используем реальные заголовки
-            df.iloc[:, structure.level_column] = pd.to_numeric(df.iloc[:, structure.level_column], errors="coerce")
+            has_headers = self._check_headers(df)
+            if has_headers:
+                # Если заголовки есть, перечитываем с ними
+                if worksheet_name is None:
+                    df = pd.read_excel(excel_path, header=0)
+                else:
+                    df = pd.read_excel(excel_path, sheet_name=worksheet_name, header=0)
+                data_start_row = 1
+            else:
+                # Если заголовков нет, используем числовые индексы
+                data_start_row = 0
 
-        data_df = df.dropna(subset=[df.columns[structure.level_column]]).reset_index(drop=True)
+            # Приводим названия колонок к строковому типу для надежности
+            df.columns = df.columns.astype(str)
+            structure.attribute_columns = {k: str(v) for k, v in structure.attribute_columns.items()}
+
+        except Exception as e:
+            logger.error(f"Не удалось прочитать Excel файл: {e}", exc_info=True)
+            raise NeosintezAPIError(message=f"Не удалось прочитать Excel файл: {e}") from e
+
+        # Удаляем строки, где отсутствует значение уровня
+        level_col_name = df.columns[structure.level_column]
+        df = df.dropna(subset=[level_col_name]).reset_index(drop=True)
+        df[level_col_name] = pd.to_numeric(df[level_col_name], errors="coerce").astype("Int64")
 
         objects = []
         last_parent_at_level: Dict[int, str] = {0: parent_id}
 
-        for index, row in data_df.iterrows():
+        for index, row in df.iterrows():
             try:
-                level_val = row.iloc[structure.level_column]
-                if pd.isna(level_val):
-                    continue
-                level = int(level_val)
-
+                level = int(row.iloc[structure.level_column])
                 class_name = str(row.iloc[structure.class_column])
                 name = str(row.iloc[structure.name_column])
 
-                # Определяем родителя
-                current_parent_id = last_parent_at_level.get(level - 1)
-                if not current_parent_id:
+                # Определяем родителя из карты
+                parent_for_current_obj = last_parent_at_level.get(level - 1)
+                if parent_for_current_obj is None:
                     logger.warning(
-                        f"Не найден родитель для уровня {level} в строке {index + data_start_row}. "
-                        f"Пропускаем объект '{name}'."
+                        f"Строка {index + data_start_row + 1}: Не найден родитель для уровня {level}. "
+                        f"Проверьте последовательность уровней. Пропускаем объект '{name}'."
                     )
                     continue
 
                 attributes = {}
                 for col_idx, attr_name in structure.attribute_columns.items():
-                    attr_value = row.iloc[col_idx]
-                    if pd.notna(attr_value) and str(attr_value).strip():
-                        attributes[attr_name] = attr_value
+                    # Ищем столбец по индексу, так как имена могут быть ненадёжными
+                    if col_idx < len(row):
+                        attr_value = row.iloc[col_idx]
+                        if pd.notna(attr_value) and str(attr_value).strip():
+                            attributes[attr_name] = attr_value
 
                 # Виртуальный ID для построения дерева
-                virtual_id = f"virtual::{name}::{index}"
+                virtual_id = f"virtual::{level}::{index}"
 
                 obj_data = {
                     "level": level,
                     "class_name": class_name,
                     "name": name,
                     "attributes": attributes,
-                    "parentId": current_parent_id,
+                    "parentId": parent_for_current_obj,
                     "id": virtual_id,  # Присваиваем временный ID
-                    "row_index": index + data_start_row,
+                    "row_index": index + data_start_row + 1,
                 }
                 objects.append(obj_data)
 
@@ -482,58 +473,83 @@ class ExcelImporter:
                 last_parent_at_level[level] = virtual_id
 
                 # Сбрасываем дочерние уровни, чтобы избежать неправильной привязки
-                # при возврате на более высокий уровень (например, с 3 на 2)
                 keys_to_delete = [k for k in last_parent_at_level if k > level]
                 for k in keys_to_delete:
                     del last_parent_at_level[k]
 
-            except (ValueError, IndexError) as e:
-                logger.error(f"Ошибка парсинга строки {index + data_start_row}: {e}. Cтрока: {row.to_dict()}")
+            except (ValueError, IndexError, KeyError) as e:
+                logger.error(f"Ошибка парсинга строки {index + data_start_row + 1}: {e}. Cтрока: {row.to_dict()}", exc_info=True)
 
         return objects
 
     async def _validate_objects(self, objects_to_create: List[Dict[str, Any]]) -> List[str]:
         """Проверяет корректность данных для создания объектов."""
         errors = []
-
         if not objects_to_create:
-            errors.append("Не найдено объектов для импорта")
+            errors.append("Не найдено объектов для импорта.")
             return errors
 
-        all_classes = set()
-        for obj in objects_to_create:
-            all_classes.add(obj["class_name"])
-
-        for class_name in all_classes:
+        # 1. Проверяем, что все указанные классы существуют
+        unique_class_names = {obj["class_name"] for obj in objects_to_create}
+        logger.info(f"Проверка существования классов: {unique_class_names}")
+        for class_name in unique_class_names:
             try:
+                # Используем кэширующий метод
                 await self._get_class_by_name(class_name)
-            except Exception as e:
-                errors.append(f"Класс '{class_name}' не найден в Neosintez: {e}")
+            except NeosintezAPIError as e:
+                error_message = f"Класс '{class_name}' не найден в Неосинтезе. {e}"
+                logger.error(error_message)
+                errors.append(error_message)
+
+        # 2. Проверяем наличие дубликатов имен на одном уровне иерархии
+        names_by_parent: Dict[str, set] = {}
+        for obj in objects_to_create:
+            parent_id = str(obj.get("parentId"))
+            name = obj.get("name")
+            row = obj.get("row_index", "N/A")
+
+            if parent_id not in names_by_parent:
+                names_by_parent[parent_id] = set()
+
+            if name in names_by_parent[parent_id]:
+                error_message = (
+                    f"Строка {row}: Обнаружен дубликат имени '{name}' "
+                    f"у одного и того же родителя. "
+                    f"Имена дочерних объектов должны быть уникальны."
+                )
+                logger.warning(error_message)
+                errors.append(error_message)
+            else:
+                names_by_parent[parent_id].add(name)
 
         return errors
 
     async def _get_class_by_name(self, class_name: str) -> Dict[str, Any]:
-        """Получает класс по имени с кэшированием."""
+        """Получает информацию о классе по имени, используя кеш."""
         if class_name not in self.classes_cache:
-            # Используем get_classes_by_name, который возвращает список
-            classes_found = await self.client.classes.get_classes_by_name(class_name)
-
-            # Ищем точное совпадение имени, нечувствительное к регистру
-            class_info = next((cls for cls in classes_found if cls["name"].lower() == class_name.lower()), None)
-
-            if class_info:
-                # В `class_info` у нас {'id': '...', 'name': '...'}
-                # Для единообразия с другими частями системы, преобразуем к {'Id': '...', 'Name': '...'}
-                standardized_class_info = {"Id": class_info["id"], "Name": class_info["name"]}
-                self.classes_cache[class_name] = standardized_class_info
-            else:
-                raise NeosintezAPIError(f"Класс '{class_name}' не найден")
-
+            try:
+                class_info_list = await self.client.classes.get_classes_by_name(class_name)
+                if not class_info_list:
+                    raise NeosintezAPIError(f"Класс '{class_name}' не найден.")
+                # Ищем точное совпадение
+                class_info = next((c for c in class_info_list if c["name"].lower() == class_name.lower()), None)
+                if not class_info:
+                    raise NeosintezAPIError(
+                        f"Найдено несколько классов, похожих на '{class_name}', но точное совпадение отсутствует."
+                    )
+                self.classes_cache[class_name] = class_info
+            except Exception as e:
+                logger.error(f"Ошибка при получении класса '{class_name}': {e}")
+                raise NeosintezAPIError(f"Ошибка при получении класса '{class_name}': {e}") from e
         return self.classes_cache[class_name]
 
     async def _get_class_attributes(self, class_id: str) -> List[Any]:
-        """Получает атрибуты класса по ID с кэшированием."""
+        """Получает атрибуты класса, используя кеш."""
         if class_id not in self.class_attributes_cache:
-            attributes = await self.client.classes.get_attributes(class_id)
-            self.class_attributes_cache[class_id] = attributes
+            try:
+                attributes = await self.client.classes.get_attributes(class_id)
+                self.class_attributes_cache[class_id] = attributes
+            except Exception as e:
+                logger.error(f"Ошибка при получении атрибутов для класса ID '{class_id}': {e}")
+                raise
         return self.class_attributes_cache[class_id]
