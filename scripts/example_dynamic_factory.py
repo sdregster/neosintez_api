@@ -30,6 +30,18 @@ async def main():
         "ИР Адепт - Primavera": "Да",
     }
 
+    """
+    StroykaModel:
+    _class_id: "c56370d8-ad8f-ec11-911d-005056b6948b"
+    _class_name: "Стройка"
+    _attributes_meta: ...
+
+    name: "Тестовая стройка из API со ссылкой"
+    mvz: "МВЗ_PUBLIC_777"
+    id_stroyki_adep: 54321
+    ir_adep_primavera: "Да"
+    """
+
     client = NeosintezClient()
 
     # Инициализируем фабрику с клиентом и возможными названиями ключевых полей
@@ -45,9 +57,9 @@ async def main():
         class_info_list = await client.classes.get_classes_by_name(class_name_to_find)
         if not class_info_list:
             raise ValueError(f"Класс '{class_name_to_find}' не найден")
-        
-        class_info = next(c for c in class_info_list if c['name'].lower() == class_name_to_find.lower())
-        class_id = class_info['id']
+
+        class_info = next(c for c in class_info_list if c["name"].lower() == class_name_to_find.lower())
+        class_id = class_info["id"]
         class_attributes = await client.classes.get_attributes(class_id)
         attributes_meta_map = {attr.Name: attr for attr in class_attributes}
 
@@ -67,19 +79,13 @@ async def main():
 
         print("\nПроверка доступа к полю 'МВЗ':")
         mvz_field_name = generate_field_name("МВЗ")
-        print(
-            f"  - blueprint.model_instance.{mvz_field_name} = {getattr(blueprint.model_instance, mvz_field_name)}"
-        )
+        print(f"  - blueprint.model_instance.{mvz_field_name} = {getattr(blueprint.model_instance, mvz_field_name)}")
 
         print("\nПроверка доступа к ссылочному полю 'ИР Адепт - Primavera':")
         primavera_field_name = generate_field_name("ИР Адепт - Primavera")
         primavera_value = getattr(blueprint.model_instance, primavera_field_name)
-        print(
-            f"  - blueprint.model_instance.{primavera_field_name} = {primavera_value}"
-        )
-        print(
-            f"  - Обратите внимание, что строковое значение 'Да' было преобразовано в ID объекта: {primavera_value}"
-        )
+        print(f"  - blueprint.model_instance.{primavera_field_name} = {primavera_value}")
+        print(f"  - Обратите внимание, что строковое значение 'Да' было преобразовано в ID объекта: {primavera_value}")
 
     except Exception as e:
         print(f"\nОшибка при выполнении: {e}")

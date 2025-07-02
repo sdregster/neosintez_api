@@ -70,7 +70,6 @@ exclude = [
     "build",
     "dist",
     "*.egg-info",
-    "scripts", # Игнорируем тестовые скрипты
 ]
 
 [tool.ruff.lint]

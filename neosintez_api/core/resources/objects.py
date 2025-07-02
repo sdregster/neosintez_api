@@ -271,39 +271,15 @@ class ObjectsResource(BaseResource):
 
         return result
 
-    async def rename(self, object_id: Union[str, UUID], new_name: str) -> bool:
-        """
-        Переименовывает объект.
-
-        Args:
-            object_id: ID объекта
-            new_name: Новое имя объекта
-
-        Returns:
-            bool: True, если переименование успешно
-        """
+    async def rename(self, object_id: str, new_name: str) -> None:
+        """Переименовывает объект."""
         endpoint = f"api/objects/{object_id}/name"
-        params = {"new": new_name}
+        await self._request("PUT", endpoint, params={"new": new_name})
 
-        await self._request("PUT", endpoint, params=params)
-        return True
-
-    async def move(self, object_id: Union[str, UUID], parent_id: Union[str, UUID]) -> bool:
-        """
-        Перемещает объект под нового родителя.
-
-        Args:
-            object_id: ID объекта для перемещения
-            parent_id: ID нового родительского объекта
-
-        Returns:
-            bool: True, если перемещение успешно
-        """
+    async def move(self, object_id: str, parent_id: str) -> None:
+        """Перемещает объект к новому родителю."""
         endpoint = f"api/objects/{object_id}/parent"
-        params = {"parentId": str(parent_id)}
-
-        await self._request("PUT", endpoint, params=params)
-        return True
+        await self._request("PUT", endpoint, params={"parentId": parent_id})
 
     async def move_batch(
         self,
@@ -477,6 +453,11 @@ class ObjectsResource(BaseResource):
             await self._request("PUT", endpoint, data=attributes_array)
             return True
         except Exception as e:
-            logger.error(f"Ошибка при установке атрибутов объекта {object_id}: {e}")
+            logger.error(f"Не удалось установить атрибуты для объекта {object_id}: {e}")
             logger.error(f"Данные запроса: {attributes_array}")
             raise
+
+    async def delete(self, object_id: str):
+        """Удаляет объект."""
+        endpoint = f"api/objects/{object_id}"
+        await self._request("DELETE", endpoint)

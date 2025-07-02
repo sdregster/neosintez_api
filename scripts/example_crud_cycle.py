@@ -12,6 +12,7 @@ from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
 from neosintez_api.services import DynamicModelFactory, ObjectService
 
+
 # Настройка логирования для вывода детальной информации
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("neosintez_api").setLevel(logging.INFO)
@@ -60,9 +61,9 @@ async def main():
         class_info_list = await client.classes.get_classes_by_name(class_name_to_find)
         if not class_info_list:
             raise ValueError(f"Класс '{class_name_to_find}' не найден")
-        
-        class_info = next(c for c in class_info_list if c['name'].lower() == class_name_to_find.lower())
-        class_id = class_info['id']
+
+        class_info = next(c for c in class_info_list if c["name"].lower() == class_name_to_find.lower())
+        class_id = class_info["id"]
         class_attributes = await client.classes.get_attributes(class_id)
         attributes_meta_map = {attr.Name: attr for attr in class_attributes}
 

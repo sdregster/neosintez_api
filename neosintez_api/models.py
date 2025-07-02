@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 
 class TokenResponse(BaseModel):
@@ -293,4 +293,36 @@ class EquipmentModel(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
+    )
+
+
+class NeosintezBaseModel(BaseModel):
+    """
+    Базовая модель для всех объектов, работающих с API Неосинтеза.
+
+    Она предоставляет механизм для связи с классом в Неосинтезе
+    и хранения внутреннего состояния объекта (ID, метаданные и т.д.),
+    оставляя пользовательский интерфейс модели чистым.
+    """
+
+    # Системные поля, которые будут у каждого объекта Неосинтеза.
+    # Они будут заполняться автоматически сервисами.
+    # Используем PrivateAttr, чтобы Pydantic не считал их частью схемы.
+    _id: Optional[str] = PrivateAttr(default=None)
+    _class_id: Optional[str] = PrivateAttr(default=None)
+    _parent_id: Optional[str] = PrivateAttr(default=None)
+
+    class Neosintez:
+        """
+        Внутренний класс для хранения мета-конфигурации,
+        связывающей Pydantic-модель с классом Неосинтеза.
+        """
+
+        class_name: str
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        # Разрешаем хранить дополнительные атрибуты, не объявленные в модели
+        # (например, наши приватные _id, _class_id)
+        extra="allow",
     )

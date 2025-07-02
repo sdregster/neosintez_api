@@ -8,10 +8,10 @@ import logging
 import os
 import traceback
 
-import pandas as pd
 from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
 from neosintez_api.services.excel_importer import ExcelImporter
+
 
 # Настройка логирования для вывода детальной информации
 logging.basicConfig(level=logging.INFO)
@@ -37,9 +37,7 @@ async def main():
 
     if not os.path.exists(test_excel_path):
         print(f"Файл для импорта не найден по пути: {test_excel_path}")
-        print(
-            "Пожалуйста, убедитесь, что файл существует и содержит данные для импорта."
-        )
+        print("Пожалуйста, убедитесь, что файл существует и содержит данные для импорта.")
         return
 
     try:
@@ -51,9 +49,7 @@ async def main():
 
         # 2. Предварительный просмотр
         print("--- Этап 2: Предварительный просмотр импорта ---")
-        preview = await importer.preview_import(
-            test_excel_path, parent_id=settings.test_folder_id
-        )
+        preview = await importer.preview_import(test_excel_path, parent_id=settings.test_folder_id)
         print(f"Найдено объектов для создания: {preview.estimated_objects}")
         print("Ошибки валидации:", "Отсутствуют" if not preview.validation_errors else "")
         for err in preview.validation_errors:
@@ -63,12 +59,8 @@ async def main():
         # Распечатаем дерево в читаемом виде
         for obj in preview.objects_to_create:
             indent = "  " * (obj["level"] - 1)
-            print(
-                f"{indent}- {obj['name']} "
-                f"(Класс: {obj['class_name']}, "
-                f"Родитель: {obj.get('parentId')})"
-            )
-        
+            print(f"{indent}- {obj['name']} (Класс: {obj['class_name']}, Родитель: {obj.get('parentId')})")
+
         print("-" * 30)
 
         if preview.validation_errors:
@@ -77,9 +69,7 @@ async def main():
 
         # 3. Выполнение импорта
         print("--- Этап 3: Выполнение импорта ---")
-        result = await importer.import_from_excel(
-            test_excel_path, parent_id=settings.test_folder_id
-        )
+        result = await importer.import_from_excel(test_excel_path, parent_id=settings.test_folder_id)
         print(f"Импорт завершен за {result.duration_seconds:.2f} сек.")
         print(f"Всего создано объектов: {result.total_created}")
         print("Создано по уровням:", result.created_by_level)
@@ -92,9 +82,7 @@ async def main():
             print(f"  - ID: {obj['id']}, Имя: {obj['name']}, Уровень: {obj['level']}")
 
         print("-" * 30)
-        print(
-            f"Проверьте созданную иерархию в Неосинтез в папке с ID: {settings.test_folder_id}"
-        )
+        print(f"Проверьте созданную иерархию в Неосинтез в папке с ID: {settings.test_folder_id}")
 
     except Exception as e:
         print(f"\nКритическая ошибка при выполнении: {e}")
@@ -108,4 +96,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

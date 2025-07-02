@@ -2,22 +2,31 @@
 Фабрика для динамического создания Pydantic-моделей на основе пользовательских данных.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
 from neosintez_api.services.object_search_service import ObjectSearchService
 from neosintez_api.utils import generate_field_name, neosintez_type_to_python_type
 
+from ..resolvers import AttributeResolver
+
 
 if TYPE_CHECKING:
     from neosintez_api.core.client import NeosintezClient
 
 
-class ObjectBlueprint(NamedTuple):
+@dataclass
+class ObjectBlueprint:
     """
-    Контейнер, описывающий Pydantic-модель объекта и его первоначальное состояние.
-    Эта структура отражает плоское представление объекта, удобное для работы в Python.
+    Контейнер, описывающий Pydantic-модель объекта и его метаданные.
+
+    Эта структура содержит все необходимое для работы с объектом:
+    - Системное представление (готовая Pydantic-модель для API).
+    - Пользовательское представление (человекочитаемые значения).
+    - Метаданные, использованные для создания.
+    - Исходные данные и ошибки.
     """
 
     model_class: type[BaseModel]
@@ -25,6 +34,9 @@ class ObjectBlueprint(NamedTuple):
     attributes_meta: Dict[str, Any]
     class_id: str
     class_name: str
+    user_data: Dict[str, Any]
+    display_representation: Dict[str, Any]
+    errors: List[str] = field(default_factory=list)
 
 
 def _create_pydantic_model(class_name: str, attributes_meta: Dict[str, Any]) -> type[BaseModel]:
@@ -78,6 +90,7 @@ class DynamicModelFactory:
         self.name_aliases = [alias.lower() for alias in name_aliases]
         self.class_name_aliases = [alias.lower() for alias in class_name_aliases]
         self.search_service = ObjectSearchService(self.client)
+        self.resolver = AttributeResolver(self.client)
 
     def _find_and_extract(self, data: Dict[str, Any], aliases: List[str]) -> (str, Any):
         """Находит ключ по одному из алиасов, возвращает его и значение."""
@@ -99,12 +112,15 @@ class DynamicModelFactory:
         if not object_name:
             raise ValueError(f"Не удалось найти имя объекта по алиасам: {self.name_aliases}")
 
-        # 2. Отделяем данные для атрибутов
+        # 2. Отделяем данные для атрибутов и создаем чистовое представление
         attribute_data = {
             k: v
             for k, v in user_data.items()
             if k.lower() not in self.name_aliases and k.lower() not in self.class_name_aliases
         }
+        display_representation = attribute_data.copy()
+        if original_name_key:
+            display_representation[original_name_key] = object_name
 
         # 3. Готовим справочник метаданных по имени атрибута
         attr_lookup = {attr_data.Name: attr_data for attr_data in attributes_meta.values()}
@@ -113,53 +129,14 @@ class DynamicModelFactory:
         for attr_name, attr_value in attribute_data.items():
             meta = attr_lookup.get(attr_name)
             if meta and meta.Type == 8 and isinstance(attr_value, str):  # 8 - Ссылка на объект
-                # Вспомогательная функция для извлечения значений из Constraints.
-                # Работает с реальной структурой AttributeConstraint.
-                def get_constraint_ids() -> (Optional[str], Optional[str]):
-                    """
-                    Извлекает ID класса и ID корневого объекта из ограничений.
-                    Возвращает (class_id, root_id)
-                    """
-                    linked_class_id, parent_id = None, None
-                    if not isinstance(meta.Constraints, list):
-                        return None, None
-
-                    for constraint in meta.Constraints:
-                        # Ограничение по классу (Type=1) указывает на класс справочника.
-                        if constraint.Type == 1 and constraint.EntityId:
-                            linked_class_id = str(constraint.EntityId)
-                        # Ограничение по корневому объекту (Type=3) указывает на родителя
-                        # (сам справочник, в котором ищем значение).
-                        elif constraint.Type == 3 and constraint.ObjectRootId:
-                            parent_id = str(constraint.ObjectRootId)
-                    return linked_class_id, parent_id
-
-                linked_class_id, parent_id = get_constraint_ids()
-
-                if not linked_class_id:
-                    raise ValueError(
-                        f"Не удалось извлечь ID класса справочника (Constraint Type 1) для атрибута '{attr_name}'"
+                try:
+                    resolved_obj = await self.resolver.resolve_link_attribute_as_object(
+                        attr_meta=meta, attr_value=attr_value
                     )
-
-                # 1. Получаем все возможные варианты для справочника
-                possible_options = await self.search_service.find_objects_by_class(
-                    class_id=linked_class_id, parent_id=parent_id
-                )
-
-                # 2. Ищем точное совпадение по имени среди вариантов
-                found_option = None
-                for option in possible_options:
-                    if option.Name.lower() == attr_value.lower():
-                        found_option = option
-                        break
-
-                # 3. Подставляем ID или вызываем ошибку
-                if found_option:
-                    attribute_data[attr_name] = found_option.Id
-                else:
-                    raise ValueError(
-                        f"Не удалось найти связанный объект с именем '{attr_value}' для атрибута '{attr_name}'."
-                    )
+                    attribute_data[attr_name] = resolved_obj
+                except ValueError as e:
+                    # Можно здесь собирать ошибки, а не падать сразу
+                    raise e
 
         # 4. Создаем Pydantic модель с помощью общей функции
         UnifiedObjectModel = _create_pydantic_model(class_name, attr_lookup)
@@ -180,4 +157,7 @@ class DynamicModelFactory:
             attributes_meta=attributes_meta,
             class_id=class_id,
             class_name=class_name,
+            user_data=user_data,
+            display_representation=display_representation,
+            errors=[],  # Пока оставляем пустым
         )

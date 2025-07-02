@@ -13,6 +13,7 @@ from neosintez_api import NeosintezClient
 from neosintez_api.config import NeosintezConfig
 from neosintez_api.services import ClassService
 
+
 # Включаем логирование, чтобы видеть информационные сообщения от сервиса
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("neosintez_api").setLevel(logging.DEBUG)
@@ -28,7 +29,7 @@ async def main():
     settings = NeosintezConfig()
     client = NeosintezClient(settings)
     class_service = ClassService(client)
-    
+
     # Имя класса для поиска
     class_name_to_find = "Стройка"
 
@@ -38,7 +39,7 @@ async def main():
         found_classes = await class_service.find_by_name(class_name_to_find)
         if not found_classes:
             raise ValueError(f"Класс, содержащий в имени '{class_name_to_find}', не найден.")
-        
+
         # Берем первый найденный класс
         target_class_info = found_classes[0]
         class_id = str(target_class_info.Id)
@@ -49,7 +50,7 @@ async def main():
         detailed_class = await class_service.get_by_id(class_id)
         if not detailed_class:
             raise ValueError(f"Не удалось получить детальную информацию для класса {class_id}")
-            
+
         print(f"✅ Информация получена: {detailed_class.model_dump_json(indent=2)}")
 
         # 3. Получаем атрибуты класса
@@ -65,11 +66,11 @@ async def main():
     except Exception as e:
         print(f"\n❌ Произошла ошибка: {e}")
         traceback.print_exc()
-    
+
     finally:
         await client.close()
         print("\nСоединение с клиентом закрыто.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

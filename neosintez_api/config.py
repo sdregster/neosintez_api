@@ -2,7 +2,6 @@
 Конфигурационные параметры для работы с API Неосинтез.
 """
 
-from functools import lru_cache
 from typing import Optional
 
 from pydantic import AnyHttpUrl, Field
@@ -37,6 +36,7 @@ class NeosintezConfig(BaseSettings):
     verify_ssl: bool = Field(True, alias="NEOSINTEZ_VERIFY_SSL")
     test_folder_id: Optional[str] = None
     test_folder_id_2: Optional[str] = None
+    trash_folder_id: Optional[str] = None
     request_timeout: int = Field(60, alias="NEOSINTEZ_REQUEST_TIMEOUT")
 
     # Настройки кэша метаданных
@@ -58,9 +58,4 @@ class NeosintezConfig(BaseSettings):
     )
 
 
-@lru_cache
-def get_settings() -> NeosintezConfig:
-    """
-    Возвращает экземпляр настроек, используя кеширование.
-    """
-    return NeosintezConfig()
+settings = NeosintezConfig()

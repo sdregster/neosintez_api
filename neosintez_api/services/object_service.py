@@ -5,20 +5,24 @@
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Generic, List, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, Type, Union
 from uuid import UUID
 
+from neosintez_api.config import settings
 from neosintez_api.core.exceptions import NeosintezAPIError
 
-from ..utils import generate_field_name
+from .class_service import ClassService
 from .mappers.object_mapper import ObjectMapper
 from .models import BulkCreateResult, CreateRequest, T
+from .resolvers import AttributeResolver
 
 
 # Настройка логгера
 logger = logging.getLogger("neosintez_api.services.object_service")
 
 if TYPE_CHECKING:
+    from neosintez_api.models import NeosintezBaseModel
+
     from ..core.client import NeosintezClient
 
 
@@ -37,23 +41,31 @@ class ObjectService(Generic[T]):
         """
         self.client = client
         self.mapper = ObjectMapper()
+        self.class_service = ClassService(client)
+        self.resolver = AttributeResolver(client)
 
     async def create(
         self,
-        model: T,
-        class_id: str,
-        class_name: str,
-        attributes_meta: Dict[str, Any],
+        model: Union["NeosintezBaseModel", T],
+        class_id: Optional[str] = None,
+        class_name: Optional[str] = None,
+        attributes_meta: Optional[Dict[str, Any]] = None,
         parent_id: Union[str, UUID, None] = None,
     ) -> T:
         """
-        Создает объект из единой Pydantic-модели.
+        Создает объект из Pydantic-модели.
+
+        Может работать в двух режимах:
+        1. Декларативный: Принимает наследника NeosintezBaseModel.
+           Сервис сам определяет класс и разрешает атрибуты.
+        2. Явный: Принимает обычную модель и метаданные (class_id и т.д.).
+           Используется для работы с динамически созданными моделями.
 
         Args:
             model: Экземпляр Pydantic-модели с данными.
-            class_id: ID класса создаваемого объекта.
-            class_name: Имя класса создаваемого объекта.
-            attributes_meta: Словарь с метаданными атрибутов из API.
+            class_id: ID класса (для явного режима).
+            class_name: Имя класса (для явного режима).
+            attributes_meta: Метаданные атрибутов (для явного режима).
             parent_id: Идентификатор родительского объекта.
 
         Returns:
@@ -61,11 +73,83 @@ class ObjectService(Generic[T]):
 
         Raises:
             ApiError: Если произошла ошибка при создании объекта.
+            ValueError: Если переданы некорректные аргументы.
         """
-        try:
-            # 1. Получаем имя из модели
-            object_name = model.name
+        from neosintez_api.models import NeosintezBaseModel
 
+        object_name: str
+
+        # --- Диспетчеризация ---
+        if isinstance(model, NeosintezBaseModel):
+            # Декларативный режим
+            if not hasattr(model, "Neosintez") or not hasattr(model.Neosintez, "class_name"):
+                raise ValueError("Декларативная модель должна иметь внутренний класс Neosintez с атрибутом class_name")
+
+            object_name = model.name
+            class_name = model.Neosintez.class_name
+            logger.info(f"Запуск создания в декларативном режиме для объекта '{object_name}' класса '{class_name}'")
+
+            # Получаем метаданные класса
+            found_classes = await self.class_service.find_by_name(class_name)
+            if not found_classes:
+                raise ValueError(f"Класс с именем '{class_name}' не найден.")
+            if len(found_classes) > 1:
+                # Попытка найти точное совпадение
+                exact_matches = [c for c in found_classes if c.Name.lower() == class_name.lower()]
+                if len(exact_matches) == 1:
+                    class_info = exact_matches[0]
+                else:
+                    raise ValueError(f"Найдено несколько классов с именем, похожим на '{class_name}'. Уточните имя.")
+            else:
+                class_info = found_classes[0]
+
+            class_id = str(class_info.Id)
+
+            # Получаем атрибуты и создаем словарь для маппинга
+            class_attributes = await self.class_service.get_attributes(class_id)
+            attributes_meta = {attr.Name: attr for attr in class_attributes}
+
+            # Создаем копию модели для подготовки к отправке в API.
+            # Мы не хотим менять исходный экземпляр пользователя.
+            model_for_api = model.model_copy(deep=True)
+
+            # Разрешаем ссылочные атрибуты
+            for field_name, field_info in model.model_fields.items():
+                if field_info.alias and field_info.alias in attributes_meta:
+                    attr_meta = attributes_meta[field_info.alias]
+                    attr_value = getattr(model_for_api, field_name)
+
+                    # Если это ссылочный атрибут и значение - строка, разрешаем его
+                    if attr_meta.Type == 8 and isinstance(attr_value, str):
+                        logger.debug(f"Разрешение ссылочного атрибута '{attr_meta.Name}' со значением '{attr_value}'")
+                        try:
+                            resolved_obj = await self.resolver.resolve_link_attribute_as_object(
+                                attr_meta=attr_meta, attr_value=attr_value
+                            )
+                            # Обновляем значение в копии модели
+                            setattr(model_for_api, field_name, resolved_obj)
+                            logger.debug(f"Атрибут '{attr_meta.Name}' разрешен в объект: {resolved_obj}")
+                        except ValueError as e:
+                            logger.error(f"Ошибка разрешения атрибута '{attr_meta.Name}': {e}")
+                            # TODO: Улучшить обработку ошибок, возможно, собирать их
+                            raise e
+
+            # В дальнейшем для создания будет использоваться model_for_api
+            # Здесь мы временно передаем исходную модель, чтобы не ломать маппер
+            # TODO: Адаптировать маппер для работы с уже разрешенными данными
+
+        elif all([class_id, class_name, attributes_meta]):
+            # Явный режим
+            object_name = model.name
+            logger.info(f"Запуск создания в явном режиме для объекта '{object_name}' класса '{class_name}'")
+
+        else:
+            raise ValueError(
+                "Для создания объекта необходимо передать либо наследника NeosintezBaseModel, либо полную мета-информацию (class_id, class_name, attributes_meta)."
+            )
+
+        try:
+            # 1. Получаем имя из модели (уже сделано выше)
             logger.info(f"Создание объекта '{object_name}' класса '{class_name}' (ID: {class_id})")
 
             # 2. Создаем объект в API без атрибутов
@@ -84,7 +168,10 @@ class ObjectService(Generic[T]):
                 (a["Name"] if isinstance(a, dict) else a.Name): (a if isinstance(a, dict) else a.model_dump())
                 for a in attributes_meta.values()
             }
-            attributes_list = await self.mapper.model_to_attributes(model, attr_meta_by_name)
+
+            # Используем model_for_api если она была создана, иначе исходную модель
+            source_model_for_mapper = locals().get("model_for_api", model)
+            attributes_list = await self.mapper.model_to_attributes(source_model_for_mapper, attr_meta_by_name)
 
             # 4. Устанавливаем атрибуты
             if attributes_list:
@@ -92,13 +179,19 @@ class ObjectService(Generic[T]):
                 logger.info(f"Для объекта {object_id} установлено {len(attributes_list)} атрибутов.")
 
             # 5. Возвращаем обновленную модель с ID
-            model.id = object_id
-            model.class_id = class_id
-            model.parent_id = str(parent_id) if parent_id else None
+            if isinstance(model, NeosintezBaseModel):
+                model._id = object_id
+                model._class_id = class_id
+                model._parent_id = str(parent_id) if parent_id else None
+            else:
+                # Для обратной совместимости со старыми моделями
+                model.id = object_id
+                model.class_id = class_id
+                model.parent_id = str(parent_id) if parent_id else None
             return model
 
         except Exception as e:
-            logger.error(f"Ошибка API при создании объекта '{model.name}': {e}")
+            logger.error(f"Ошибка API при создании объекта '{object_name}': {e}")
             raise
 
     async def create_many(
@@ -139,6 +232,15 @@ class ObjectService(Generic[T]):
     async def read(self, object_id: Union[str, UUID], model_class: Type[T]) -> T:
         """
         Читает объект и преобразует его в плоскую модель Pydantic.
+
+        Args:
+            object_id: Идентификатор объекта.
+            model_class: Класс Pydantic-модели, в который нужно преобразовать данные.
+                         Если это наследник NeosintezBaseModel, системные поля
+                         (_id, _class_id, _parent_id) будут заполнены автоматически.
+
+        Returns:
+            Экземпляр model_class с данными объекта.
         """
         try:
             # 1. Параллельно получаем данные объекта и его путь
@@ -152,13 +254,18 @@ class ObjectService(Generic[T]):
             class_id = object_data.EntityId
 
             # 2. Получаем метаданные атрибутов класса
+            # ВРЕМЕННОЕ РЕШЕНИЕ: Принудительно запрашиваем атрибуты напрямую из API,
+            # чтобы обойти проблему с форматом данных в кэше ClassService.
             class_attributes = await self.client.classes.get_attributes(class_id)
             attr_id_to_name = {
-                str(attr.get("Id") if isinstance(attr, dict) else attr.Id): (
-                    attr.get("Name") if isinstance(attr, dict) else attr.Name
+                str(attr.Id if hasattr(attr, "Id") else attr["Id"]): (
+                    attr.Name if hasattr(attr, "Name") else attr["Name"]
                 )
                 for attr in class_attributes
             }
+
+            # Строим карту для сопоставления имени атрибута API с именем поля модели
+            alias_to_field_map = {(f.alias or n): n for n, f in model_class.model_fields.items()}
 
             # 3. Определяем родителя
             parent_id = None
@@ -166,29 +273,48 @@ class ObjectService(Generic[T]):
                 # Родитель - это предпоследний элемент в пути
                 parent_id = str(path_data.AncestorsOrSelf[-2].Id)
 
-            # 4. Собираем данные для создания плоской модели
-            model_payload = {
-                "id": str(object_data.Id),
-                "class_id": str(class_id),
-                "parent_id": parent_id,
-                "name": object_data.Name or "",
-            }
+            # 4. Собираем данные для создания модели
+            flat_data = {}
+            if "name" in model_class.model_fields:
+                flat_data["name"] = object_data.Name
 
             # 5. Извлекаем и преобразуем атрибуты
             if hasattr(object_data, "Attributes") and object_data.Attributes:
                 for attr_id_str, attr_value_data in object_data.Attributes.items():
-                    attr_name = attr_id_to_name.get(attr_id_str)
-                    if not attr_name:
+                    api_attr_name = attr_id_to_name.get(attr_id_str)
+                    if not api_attr_name:
                         logger.warning(f"Атрибут с ID {attr_id_str} не найден в метаданных класса.")
                         continue
 
-                    field_name = generate_field_name(attr_name)
-                    attr_value = attr_value_data.get("Value") if isinstance(attr_value_data, dict) else attr_value_data
-                    model_payload[field_name] = attr_value
+                    field_name = alias_to_field_map.get(api_attr_name)
+                    if not field_name:
+                        logger.warning(
+                            f"Для атрибута '{api_attr_name}' не найдено соответствующее поле в модели {model_class.__name__}."
+                        )
+                        continue
+
+                    attr_value = attr_value_data.get("Value")
+
+                    # Если значение - словарь (ссылочный атрибут), а поле модели ждет строку, берем Name
+                    if isinstance(attr_value, dict) and "Name" in attr_value:
+                        target_field = model_class.model_fields.get(field_name)
+                        if target_field and target_field.annotation == str:
+                            attr_value = attr_value.get("Name")
+
+                    flat_data[field_name] = attr_value
 
             # 6. Создаем экземпляр модели
-            model_instance = model_class(**model_payload)
-            return model_instance
+            instance = model_class(**flat_data)
+
+            # Если это наша декларативная модель, заполняем системные поля
+            from neosintez_api.models import NeosintezBaseModel
+
+            if isinstance(instance, NeosintezBaseModel):
+                instance._id = str(object_id)
+                instance._class_id = class_id
+                instance._parent_id = str(parent_id) if parent_id else None
+
+            return instance
 
         except Exception as e:
             logger.error(f"Ошибка при чтении объекта {object_id}: {e}")
@@ -196,123 +322,165 @@ class ObjectService(Generic[T]):
 
     async def update(
         self,
-        model: T,
-        attributes_meta: Dict[str, Any],
-    ) -> bool:
+        model: Union["NeosintezBaseModel", T],
+    ) -> T:
         """
-        Интеллектуально обновляет объект, сравнивая текущее состояние с моделью.
-        Обновляет имя, родителя и атрибуты только при их изменении, делая это параллельно.
-        """
-        if not model.id:
-            raise ValueError("Модель должна содержать 'id' для обновления.")
-        object_id = model.id
+        Интеллектуально обновляет объект на основе Pydantic-модели.
 
-        try:
-            logger.info(f"Начало интеллектуального обновления объекта {object_id}")
-
-            # 1. Получаем текущее состояние объекта
-            current_obj = await self.read(object_id, model.__class__)
-
-            # 2. Собираем задачи для параллельного выполнения
-            update_tasks = []
-
-            # Сравниваем и обновляем имя
-            if model.name != current_obj.name:
-                update_tasks.append(self.client.objects.rename(object_id, model.name))
-                logger.info(f"Запланировано обновление имени на '{model.name}'")
-
-            # Сравниваем и перемещаем объект
-            if model.parent_id and model.parent_id != current_obj.parent_id:
-                update_tasks.append(self.client.objects.move(object_id, model.parent_id))
-                logger.info(f"Запланировано перемещение в родителя {model.parent_id}")
-
-            # 3. Обновляем атрибуты, если они изменились
-            attributes_to_update = await self.update_attributes(
-                object_id=object_id,
-                model=model,
-                attributes_meta=attributes_meta,
-            )
-            if attributes_to_update:
-                update_tasks.append(self.client.objects.set_attributes(object_id, attributes_to_update))
-                logger.info(f"Запланировано обновление {len(attributes_to_update)} атрибутов.")
-
-            # 4. Выполняем все запланированные задачи параллельно
-            if update_tasks:
-                await asyncio.gather(*update_tasks)
-                logger.info(f"Все задачи по обновлению объекта {object_id} успешно выполнены.")
-            else:
-                logger.info(f"Нет изменений для обновления объекта {object_id}.")
-
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении объекта {model.id}: {e}")
-            raise
-
-    async def update_attributes(
-        self,
-        object_id: str,
-        model: T,
-        attributes_meta: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
-        """
-        Сравнивает атрибуты модели с текущими атрибутами объекта и возвращает список для обновления.
+        Автоматически определяет, какие поля были изменены (имя, родитель, атрибуты),
+        и выполняет необходимые запросы к API параллельно.
+        Работает только с декларативными моделями (наследниками NeosintezBaseModel).
 
         Args:
-            object_id: ID объекта для обновления.
-            model: Pydantic-модель с новыми данными.
-            attributes_meta: Метаданные атрибутов.
+            model: Экземпляр модели с обновленными данными.
+                   Должен содержать `_id` и `_class_id`.
 
         Returns:
-            Список словарей с атрибутами, которые нужно обновить.
-            Если изменений нет, возвращает пустой список.
+            T: Обновленный экземпляр модели.
+
+        Raises:
+            ValueError: Если модель не содержит необходимых данных.
+            NeosintezAPIError: Если произошла ошибка API.
         """
-        current_object = await self.client.objects.get_by_id(object_id)
-        current_attributes = current_object.Attributes or {}
+        from neosintez_api.models import NeosintezBaseModel
 
-        # TODO: Добавить кеширование для этой операции
-        class_attributes = await self.client.classes.get_attributes(current_object.EntityId)
+        if not isinstance(model, NeosintezBaseModel) or not model._id or not model._class_id:
+            raise ValueError(
+                "Для 'умного' обновления модель должна быть наследником NeosintezBaseModel "
+                "и содержать `_id` и `_class_id`."
+            )
+
+        object_id = model._id
+        logger.info(f"Запуск интеллектуального обновления для объекта ID: {object_id}")
+
+        # 1. Параллельно получаем текущее состояние объекта и его метаданные
+        try:
+            current_data, path_data, class_attributes = await asyncio.gather(
+                self.client.objects.get_by_id(object_id),
+                self.client.objects.get_path(object_id),
+                self.client.classes.get_attributes(model._class_id),
+            )
+            attributes_meta = {attr.Name: attr for attr in class_attributes}
+        except Exception as e:
+            logger.error(f"Не удалось получить текущее состояние объекта {object_id}: {e}")
+            raise
+
+        # 2. Собираем задачи для параллельного выполнения
+        update_tasks = []
+
+        # --- Сравнение и добавление задачи на переименование ---
+        if model.name != current_data.Name:
+            logger.debug(f"Обнаружено изменение имени: '{current_data.Name}' -> '{model.name}'.")
+            update_tasks.append(self.client.objects.rename(object_id, model.name))
+
+        # --- Сравнение и добавление задачи на перемещение ---
+        current_parent_id = None
+        if path_data and path_data.AncestorsOrSelf and len(path_data.AncestorsOrSelf) > 1:
+            current_parent_id = str(path_data.AncestorsOrSelf[-2].Id)
+
+        if model._parent_id and model._parent_id != current_parent_id:
+            logger.debug(f"Обнаружено изменение родителя: '{current_parent_id}' -> '{model._parent_id}'.")
+            update_tasks.append(self.client.objects.move(object_id, model._parent_id))
+
+        # --- Сравнение и добавление задачи на обновление атрибутов ---
+        model_for_api = await self._prepare_model_for_api(model, attributes_meta)
+
+        attributes_to_update = await self._get_changed_attributes(
+            model=model_for_api,
+            attributes_meta=attributes_meta,
+            current_attributes=current_data.Attributes,
+        )
+        if attributes_to_update:
+            logger.debug(f"Обнаружено {len(attributes_to_update)} измененных атрибутов.")
+            update_tasks.append(self.client.objects.set_attributes(object_id, attributes_to_update))
+
+        # 3. Выполняем все запланированные задачи
+        if update_tasks:
+            logger.info(f"Запланировано {len(update_tasks)} операций обновления.")
+            await asyncio.gather(*update_tasks)
+            logger.info(f"Все операции для объекта {object_id} успешно выполнены.")
+        else:
+            logger.info(f"Для объекта {object_id} не обнаружено изменений.")
+
+        # После всех операций заново читаем объект, чтобы вернуть модель
+        # с гарантированно актуальным состоянием.
+        logger.info(f"Повторное чтение объекта {object_id} для возврата актуальной модели.")
+        return await self.read(object_id, model.__class__)
+
+    async def _prepare_model_for_api(self, model: T, attributes_meta: Dict[str, Any]) -> T:
+        """
+        Создает копию модели и разрешает в ней ссылочные атрибуты.
+        """
+        model_for_api = model.model_copy(deep=True)
+        for field_name, field_info in model.model_fields.items():
+            if field_info.alias and field_info.alias in attributes_meta:
+                attr_meta = attributes_meta[field_info.alias]
+                attr_value = getattr(model_for_api, field_name)
+
+                if attr_meta.Type == 8 and isinstance(attr_value, str):
+                    try:
+                        resolved_obj = await self.resolver.resolve_link_attribute_as_object(
+                            attr_meta=attr_meta, attr_value=attr_value
+                        )
+                        setattr(model_for_api, field_name, resolved_obj)
+                    except ValueError as e:
+                        logger.error(f"Ошибка разрешения атрибута '{attr_meta.Name}': {e}")
+                        raise e
+        return model_for_api
+
+    async def _get_changed_attributes(
+        self,
+        model: T,
+        attributes_meta: Dict[str, Any],
+        current_attributes: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Возвращает список только тех атрибутов, значения которых изменились.
+        """
+        if current_attributes is None:
+            current_attributes = {}
+
+        # Преобразуем модель в "идеальный" список атрибутов
         attr_meta_by_name = {
-            (a["Name"] if isinstance(a, dict) else a.Name): (a if isinstance(a, dict) else a.model_dump())
-            for a in class_attributes
+            (a.Name if hasattr(a, "Name") else a["Name"]): (a.model_dump() if hasattr(a, "model_dump") else a)
+            for a in attributes_meta.values()
         }
-        name_to_id_map = {attr["Name"]: attr["Id"] for attr in attr_meta_by_name.values()}
-
-        # Преобразуем модель в список атрибутов для сравнения
         new_attributes_list = await self.mapper.model_to_attributes(model, attr_meta_by_name)
-        new_attributes_map = {attr["Id"]: attr for attr in new_attributes_list}
 
+        # Сравниваем новые атрибуты с текущими
         attributes_to_update = []
-
-        # Сравниваем новые и старые значения
-        for attr_id, new_attr_data in new_attributes_map.items():
-            current_attr_data = current_attributes.get(str(attr_id))
-            new_value = new_attr_data["Value"]
-
-            # Если атрибута нет в текущем объекте, добавляем его
-            if current_attr_data is None:
-                attributes_to_update.append(new_attr_data)
+        for new_attr in new_attributes_list:
+            attr_id = new_attr.get("Id")
+            if not attr_id:
                 continue
 
-            current_value = current_attr_data.get("Value")
+            current_attr_data = current_attributes.get(str(attr_id))
+            current_value = current_attr_data.get("Value") if current_attr_data else None
+            new_value = new_attr.get("Value")
 
-            # Сравниваем значения с учетом типов
-            # TODO: вынести в отдельный типизированный компаратор
-            if isinstance(new_value, float) and isinstance(current_value, (int, float)):
-                if not asyncio.isclose(new_value, float(current_value)):
-                    attributes_to_update.append(new_attr_data)
-            elif str(new_value) != str(current_value):
-                attributes_to_update.append(new_attr_data)
-
-        if attributes_to_update:
-            logger.info(f"Обнаружено {len(attributes_to_update)} атрибутов для обновления объекта {object_id}.")
-        else:
-            logger.info(f"Атрибуты объекта {object_id} не требуют обновления.")
-
+            # Простое сравнение по строковому представлению.
+            # TODO: Реализовать более строгое сравнение с учетом типов.
+            if str(current_value) != str(new_value):
+                attributes_to_update.append(new_attr)
         return attributes_to_update
 
     async def delete(self, object_id: Union[str, UUID]) -> bool:
         """
-        Удаляет объект по ID.
+        Перемещает объект в папку "Корзина", если она задана в настройках.
+        Если trash_folder_id не задан, выбрасывает ValueError.
+
+        Args:
+            object_id: Идентификатор объекта для "удаления".
+
+        Returns:
+            bool: True, если перемещение успешно.
+
+        Raises:
+            ValueError: Если `settings.trash_folder_id` не сконфигурирован.
         """
-        await self.client.objects.delete(str(object_id))
+        if not settings.trash_folder_id:
+            raise ValueError("Мягкое удаление невозможно: 'trash_folder_id' не задан в конфигурации.")
+
+        logger.info(f"Перемещение объекта {object_id} в корзину (ID: {settings.trash_folder_id})")
+        await self.client.objects.move(object_id=str(object_id), parent_id=settings.trash_folder_id)
         return True
