@@ -20,6 +20,7 @@ class CreateRequest(BaseModel, Generic[T]):
     class_name: str
     attributes_meta: Dict[str, Any]
     parent_id: Union[str, UUID, None] = None
+    virtual_id: str
 
 
 class BulkCreateResult(BaseModel, Generic[T]):

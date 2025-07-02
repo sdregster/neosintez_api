@@ -267,7 +267,7 @@ class ExcelImporter:
                         real_parent_id = virtual_to_real_id_map.get(str(virtual_parent_id))
 
                         if not real_parent_id:
-                            error_msg = f"Не найден реальный ID родителя для '{obj_data['name']}' (виртуальный ID: {virtual_parent_id})"
+                            error_msg = f"Не найден реальный ID родителя для '{obj_data['name']}' (виртуальный ID: {obj_data['id']})"
                             logger.error(error_msg)
                             errors.append(error_msg)
                             continue
@@ -290,6 +290,7 @@ class ExcelImporter:
                                 class_name=blueprint.class_name,
                                 attributes_meta=blueprint.attributes_meta,
                                 parent_id=real_parent_id,
+                                virtual_id=obj_data["id"],
                             )
                         )
                     except Exception as e:
@@ -311,15 +312,13 @@ class ExcelImporter:
                         logger.error(f"Ошибка при массовом создании на уровне {level}: {error}")
                         errors.append(error)
 
-                # Сопоставляем созданные объекты с исходными данными
+                # Сопоставляем созданные объекты с исходными данными по виртуальному ID
                 initial_requests_map = {
-                    (req.model.name, str(req.parent_id)): obj_data
-                    for req, obj_data in zip(requests_for_level, objects_by_level[level])
+                    req.virtual_id: obj_data for req, obj_data in zip(requests_for_level, objects_by_level[level])
                 }
 
                 for created_model, request in zip(bulk_result.created_models, requests_for_level):
-                    lookup_key = (created_model.name, str(request.parent_id))
-                    original_obj_data = initial_requests_map.get(lookup_key)
+                    original_obj_data = initial_requests_map.get(request.virtual_id)
 
                     if original_obj_data and created_model._id:
                         virtual_id = original_obj_data.get("id")
@@ -335,12 +334,10 @@ class ExcelImporter:
                             }
                         )
                         created_by_level[level] = created_by_level.get(level, 0) + 1
-                        # Удаляем, чтобы обработать возможные дубликаты имен
-                        del initial_requests_map[lookup_key]
                     else:
                         logger.warning(
                             f"Не удалось сопоставить созданный объект '{created_model.name}' "
-                            f"с исходными данными (ключ: {lookup_key})."
+                            f"с исходными данными (virtual_id: {request.virtual_id})."
                         )
 
                 logger.debug(f"Карта ID после уровня {level}: {virtual_to_real_id_map}")
@@ -478,7 +475,9 @@ class ExcelImporter:
                     del last_parent_at_level[k]
 
             except (ValueError, IndexError, KeyError) as e:
-                logger.error(f"Ошибка парсинга строки {index + data_start_row + 1}: {e}. Cтрока: {row.to_dict()}", exc_info=True)
+                logger.error(
+                    f"Ошибка парсинга строки {index + data_start_row + 1}: {e}. Cтрока: {row.to_dict()}", exc_info=True
+                )
 
         return objects
 
@@ -501,26 +500,26 @@ class ExcelImporter:
                 logger.error(error_message)
                 errors.append(error_message)
 
-        # 2. Проверяем наличие дубликатов имен на одном уровне иерархии
-        names_by_parent: Dict[str, set] = {}
-        for obj in objects_to_create:
-            parent_id = str(obj.get("parentId"))
-            name = obj.get("name")
-            row = obj.get("row_index", "N/A")
+        # # 2. Проверяем наличие дубликатов имен на одном уровне иерархии
+        # names_by_parent: Dict[str, set] = {}
+        # for obj in objects_to_create:
+        #     parent_id = str(obj.get("parentId"))
+        #     name = obj.get("name")
+        #     row = obj.get("row_index", "N/A")
 
-            if parent_id not in names_by_parent:
-                names_by_parent[parent_id] = set()
+        #     if parent_id not in names_by_parent:
+        #         names_by_parent[parent_id] = set()
 
-            if name in names_by_parent[parent_id]:
-                error_message = (
-                    f"Строка {row}: Обнаружен дубликат имени '{name}' "
-                    f"у одного и того же родителя. "
-                    f"Имена дочерних объектов должны быть уникальны."
-                )
-                logger.warning(error_message)
-                errors.append(error_message)
-            else:
-                names_by_parent[parent_id].add(name)
+        #     if name in names_by_parent[parent_id]:
+        #         error_message = (
+        #             f"Строка {row}: Обнаружен дубликат имени '{name}' "
+        #             f"у одного и того же родителя. "
+        #             f"Имена дочерних объектов должны быть уникальны."
+        #         )
+        #         logger.warning(error_message)
+        #         errors.append(error_message)
+        #     else:
+        #         names_by_parent[parent_id].add(name)
 
         return errors
 
