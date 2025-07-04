@@ -40,6 +40,7 @@ class ImportPreview(BaseModel):
     objects_to_create: List[Dict[str, Any]]
     estimated_objects: int
     validation_errors: List[str]
+    validation_warnings: List[str]
 
 
 class ImportResult(BaseModel):
@@ -49,6 +50,7 @@ class ImportResult(BaseModel):
     created_by_level: Dict[int, int]
     created_objects: List[Dict[str, Any]]
     errors: List[str]
+    warnings: List[str]
     duration_seconds: float
 
 
@@ -205,7 +207,7 @@ class ExcelImporter:
         estimated_objects = len(objects_to_create)
 
         # Проверяем валидность
-        validation_errors = await self._validate_objects(objects_to_create)
+        validation_errors, validation_warnings = await self._validate_objects(objects_to_create)
         validation_errors.extend(loading_errors)  # Добавляем ошибки, найденные при загрузке
 
         return ImportPreview(
@@ -213,6 +215,7 @@ class ExcelImporter:
             objects_to_create=objects_to_create,
             estimated_objects=estimated_objects,
             validation_errors=validation_errors,
+            validation_warnings=validation_warnings,
         )
 
     async def import_from_excel(
@@ -243,6 +246,7 @@ class ExcelImporter:
                     created_by_level={},
                     created_objects=[],
                     errors=preview.validation_errors,
+                    warnings=preview.validation_warnings,
                     duration_seconds=(datetime.now() - start_time).total_seconds(),
                 )
 
@@ -362,6 +366,7 @@ class ExcelImporter:
                 created_by_level=created_by_level,
                 created_objects=created_objects,
                 errors=errors,
+                warnings=preview.validation_warnings,
                 duration_seconds=duration,
             )
 
@@ -372,6 +377,7 @@ class ExcelImporter:
                 created_by_level={},
                 created_objects=[],
                 errors=[f"Критическая ошибка: {e}"],
+                warnings=[],
                 duration_seconds=(datetime.now() - start_time).total_seconds(),
             )
 
@@ -502,11 +508,15 @@ class ExcelImporter:
 
         return objects_to_create, errors
 
-    async def _validate_objects(self, objects_to_create: List[Dict[str, Any]]) -> List[str]:
-        """Проверяет объекты перед созданием, используя кешированный ClassService."""
+    async def _validate_objects(self, objects_to_create: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
+        """
+        Проверяет объекты перед созданием, используя кешированный ClassService.
+        Возвращает кортеж (критические_ошибки, предупреждения).
+        """
         errors = []
+        warnings = []
         if not objects_to_create:
-            return errors
+            return errors, warnings
 
         try:
             # Убедимся, что кэш классов и атрибутов в ClassService загружен
@@ -516,7 +526,7 @@ class ExcelImporter:
             all_classes = await self.class_service.get_all()
             class_name_map = {cls.Name.lower(): cls for cls in all_classes}
 
-            # 1. Проверить существование всех классов
+            # 1. Проверить существование всех классов (критическая ошибка)
             class_names_from_file = {obj["class_name"].lower() for obj in objects_to_create if "class_name" in obj}
 
             for name in class_names_from_file:
@@ -528,9 +538,10 @@ class ExcelImporter:
 
             if errors:
                 # Если есть ошибки с классами, нет смысла проверять атрибуты
-                return errors
+                return errors, warnings
 
-            # 2. Проверить атрибуты для каждого объекта
+            # 2. Проверить атрибуты для каждого объекта (предупреждение)
+            unique_warnings = set()
             for obj in objects_to_create:
                 class_name = obj.get("class_name")
                 if not class_name:
@@ -547,7 +558,12 @@ class ExcelImporter:
 
                 for attr_name in obj.get("attributes", {}):
                     if attr_name.lower() not in class_attribute_names:
-                        errors.append(f"Атрибут '{attr_name}' не найден в классе '{class_name}'.")
+                        # Собираем уникальные пары (класс, атрибут) для группировки
+                        unique_warnings.add((class_name, attr_name))
+
+            # Форматируем сгруппированные предупреждения
+            for class_name, attr_name in sorted(list(unique_warnings)):
+                warnings.append(f"Атрибут '{attr_name}' не найден в классе '{class_name}'.")
 
         except NeosintezAPIError as e:
             logger.error(f"Произошла ошибка API при валидации: {e}", exc_info=True)
@@ -556,4 +572,4 @@ class ExcelImporter:
             logger.error(f"Произошла непредвиденная ошибка при валидации: {e}", exc_info=True)
             errors.append(f"Непредвиденная ошибка при проверке данных: {e}")
 
-        return errors
+        return errors, warnings

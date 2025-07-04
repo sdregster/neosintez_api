@@ -61,6 +61,12 @@ INVALID_ATTRIBUTE_DATA = [
     {"Уровень": 1, "Класс": "Стройка", "Имя объекта": "Объект с ошибкой атрибута", "НесуществующийАтрибут": "значение"},
 ]
 
+REPEATED_INVALID_ATTRIBUTE_DATA = [
+    {"Уровень": 1, "Класс": "Стройка", "Имя объекта": "Объект 1", "Атрибут1": "значение1"},
+    {"Уровень": 1, "Класс": "Стройка", "Имя объекта": "Объект 2", "Атрибут1": "значение2", "Атрибут2": "val"},
+    {"Уровень": 1, "Класс": "Стройка", "Имя объекта": "Объект 3", "Атрибут1": "значение3"},
+]
+
 BROKEN_HIERARCHY_DATA = [
     # Уровень 1
     {
@@ -109,6 +115,15 @@ def invalid_attribute_excel_file_path(tmp_path_factory) -> Path:
     """Создает тестовый Excel-файл с ошибкой в имени атрибута."""
     path = tmp_path_factory.mktemp("data") / "invalid_attribute.xlsx"
     df = pd.DataFrame(INVALID_ATTRIBUTE_DATA)
+    df.to_excel(path, index=False)
+    return path
+
+
+@pytest.fixture(scope="module")
+def repeated_invalid_attribute_excel_file_path(tmp_path_factory) -> Path:
+    """Создает тестовый Excel-файл с повторяющимися ошибками в атрибутах."""
+    path = tmp_path_factory.mktemp("data") / "repeated_invalid_attribute.xlsx"
+    df = pd.DataFrame(REPEATED_INVALID_ATTRIBUTE_DATA)
     df.to_excel(path, index=False)
     return path
 
@@ -211,21 +226,23 @@ class TestExcelImporter:
         assert len(preview.validation_errors) == 1
         assert "Класс 'НесуществующийКласс' не найден" in preview.validation_errors[0]
 
-    async def test_preview_with_invalid_attribute(
+    async def test_preview_with_invalid_attribute_is_a_warning(
         self,
         excel_importer: ExcelImporter,
         invalid_attribute_excel_file_path: Path,
     ):
         """
-        Проверяет, что preview_import корректно находит ошибку несуществующего атрибута.
+        Проверяет, что preview_import корректно находит ошибку несуществующего
+        атрибута и классифицирует ее как предупреждение.
         """
         preview = await excel_importer.preview_import(
             excel_path=str(invalid_attribute_excel_file_path),
             parent_id=settings.test_folder_id,
         )
 
-        assert len(preview.validation_errors) == 1
-        assert "Атрибут 'НесуществующийАтрибут' не найден в классе 'Стройка'" in preview.validation_errors[0]
+        assert len(preview.validation_warnings) == 1
+        assert "Атрибут 'НесуществующийАтрибут' не найден в классе 'Стройка'" in preview.validation_warnings[0]
+        assert not preview.validation_errors
 
     async def test_import_with_invalid_class(
         self,
@@ -244,22 +261,31 @@ class TestExcelImporter:
         assert len(result.errors) == 1
         assert "Класс 'НесуществующийКласс' не найден" in result.errors[0]
 
-    async def test_import_with_invalid_attribute(
+    async def test_import_succeeds_with_invalid_attribute_warning(
         self,
         excel_importer: ExcelImporter,
         invalid_attribute_excel_file_path: Path,
+        object_service: ObjectService,
     ):
         """
-        Проверяет, что импорт прерывается, если найден несуществующий атрибут.
+        Проверяет, что импорт продолжается, если найден несуществующий атрибут,
+        и в результат записывается предупреждение.
         """
         result = await excel_importer.import_from_excel(
             excel_path=str(invalid_attribute_excel_file_path),
             parent_id=settings.test_folder_id,
         )
 
-        assert result.total_created == 0
-        assert len(result.errors) == 1
-        assert "Атрибут 'НесуществующийАтрибут' не найден в классе 'Стройка'" in result.errors[0]
+        created_ids = [obj["id"] for obj in result.created_objects]
+        try:
+            assert result.total_created == 1
+            assert not result.errors
+            assert len(result.warnings) == 1
+            assert "Атрибут 'НесуществующийАтрибут' не найден в классе 'Стройка'" in result.warnings[0]
+        finally:
+            if created_ids:
+                for obj_id in created_ids:
+                    await object_service.delete(obj_id)
 
     async def test_import_and_attributes_verification(
         self,
@@ -334,6 +360,33 @@ class TestExcelImporter:
         # Объекты 3-го уровня
         grandchild_obj = await object_service.read(grandchild_id, StroykaModel)
         assert grandchild_obj._parent_id == child_id
+
+    async def test_import_groups_attribute_warnings(
+        self,
+        excel_importer: ExcelImporter,
+        object_service: ObjectService,
+        repeated_invalid_attribute_excel_file_path: Path,
+    ):
+        """
+        Проверяет, что однотипные предупреждения об атрибутах группируются.
+        """
+        result = await excel_importer.import_from_excel(
+            excel_path=str(repeated_invalid_attribute_excel_file_path),
+            parent_id=settings.test_folder_id,
+        )
+        created_ids = [obj["id"] for obj in result.created_objects]
+        try:
+            assert result.total_created == len(REPEATED_INVALID_ATTRIBUTE_DATA)
+            assert not result.errors
+            assert len(result.warnings) == 2  # Должно быть 2 уникальных предупреждения
+            # Проверяем, что оба типа предупреждений присутствуют
+            warnings_text = "".join(result.warnings)
+            assert "Атрибут 'Атрибут1' не найден в классе 'Стройка'" in warnings_text
+            assert "Атрибут 'Атрибут2' не найден в классе 'Стройка'" in warnings_text
+        finally:
+            if created_ids:
+                for obj_id in created_ids:
+                    await object_service.delete(obj_id)
 
     async def test_import_with_broken_hierarchy_is_an_error(
         self,
