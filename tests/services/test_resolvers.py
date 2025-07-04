@@ -30,12 +30,12 @@ async def test_resolve_link_attribute_as_object_success(mock_client):
         Name="Тестовая ссылка",
         Type=8,
         Constraints=[
-            MagicMock(Type=1, EntityId=uuid.uuid4()),  # Class constraint
-            MagicMock(Type=3, ObjectRootId=uuid.uuid4()),  # Root object constraint
+            {"Type": 1, "EntityId": uuid.uuid4()},  # Class constraint
+            {"Type": 3, "ObjectRootId": uuid.uuid4()},  # Root object constraint
         ],
     )
 
-    # Мокаем ObjectSearchService, который используется внутри резолвера
+    # Мокаем результат поиска объекта по имени, возвращаем объект с атрибутами
     mock_search_result = MagicMock()
     mock_search_result.Id = linked_object_id
     mock_search_result.Name = linked_object_name
@@ -59,12 +59,12 @@ async def test_resolve_link_attribute_not_found(mock_client):
     # 1. Настройка моков
     resolver = AttributeResolver(mock_client)
     mock_attr_meta = Attribute(
-        Id=uuid.uuid4(), Name="Тестовая ссылка", Type=8, Constraints=[MagicMock(Type=1, EntityId=uuid.uuid4())]
+        Id=uuid.uuid4(), Name="Тестовая ссылка", Type=8, Constraints=[{"Type": 1, "EntityId": uuid.uuid4()}]
     )
     resolver.search_service.find_objects_by_class = AsyncMock(return_value=[])  # Возвращаем пустой список
 
     # 2. Вызов и проверка исключения
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError) as excinfo:
         await resolver.resolve_link_attribute_as_object(attr_meta=mock_attr_meta, attr_value="Несуществующее значение")
 
-    assert "Не удалось найти связанный объект" in str(exc_info.value)
+    assert "Не удалось найти связанный объект" in str(excinfo.value)

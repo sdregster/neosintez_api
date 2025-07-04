@@ -1,16 +1,21 @@
+import uuid
+
 import pytest
 import pytest_asyncio
-from unittest.mock import MagicMock
+from pydantic import ValidationError
 
 from neosintez_api.core.client import NeosintezClient
-from neosintez_api.services.factories.model_factory import DynamicModelFactory
+from neosintez_api.services.class_service import ClassService
+from neosintez_api.services.factories import DynamicModelFactory
 
 
 @pytest_asyncio.fixture
 async def factory(real_client: NeosintezClient) -> DynamicModelFactory:
     """Фикстура для создания экземпляра DynamicModelFactory."""
+    class_service = ClassService(real_client)
     return DynamicModelFactory(
         client=real_client,
+        class_service=class_service,
         name_aliases=["Имя объекта"],
         class_name_aliases=["Класс"],
     )
@@ -30,30 +35,23 @@ async def test_create_from_user_data_with_link_attribute(
     # 1. Готовим тестовые данные от пользователя
     user_data = {
         "Класс": "Стройка",
-        "Имя объекта": "Тестовая стройка для проверки динамической ссылки",
+        "Имя объекта": f"Тестовая стройка {uuid.uuid4()}",
         "ИР Адепт - Primavera": "Да",
     }
     class_name = user_data["Класс"]
     target_link_value = user_data["ИР Адепт - Primavera"]
 
-    # 2. Получаем реальные метаданные для класса "Стройка"
-    class_info_list = await real_client.classes.get_classes_by_name(class_name)
-    assert class_info_list, f"Класс '{class_name}' не найден"
-    class_info = next(
-        (c for c in class_info_list if c["name"].lower() == class_name.lower()), None
-    )
-    assert class_info, f"Точное совпадение для класса '{class_name}' не найдено"
-    class_id = class_info["id"]
-
-    class_attributes = await real_client.classes.get_attributes(class_id)
-    attributes_meta = {attr.Name: attr for attr in class_attributes}
-
-    # 3. Динамически определяем ожидаемый ID
+    # 2. Динамически определяем ожидаемый ID для сравнения
     #    Этот блок симулирует то, что должна сделать фабрика, чтобы мы могли
     #    сравнить её результат с независимо полученным эталоном.
     from neosintez_api.services.object_search_service import ObjectSearchService
 
-    attr_meta = attributes_meta.get("ИР Адепт - Primavera")
+    class_info = (await real_client.classes.get_classes_by_name(class_name))[0]
+    class_attributes = await real_client.classes.get_attributes(class_info["id"])
+    attr_meta = next(
+        (attr for attr in class_attributes if attr.Name == "ИР Адепт - Primavera"),
+        None,
+    )
     assert attr_meta, "Не найдены метаданные для атрибута 'ИР Адепт - Primavera'"
 
     linked_class_id, parent_id = None, None
@@ -62,56 +60,54 @@ async def test_create_from_user_data_with_link_attribute(
             linked_class_id = str(constraint.EntityId)
         elif constraint.Type == 3 and constraint.ObjectRootId:
             parent_id = str(constraint.ObjectRootId)
-
     assert linked_class_id, "Не удалось извлечь ID класса справочника из Constraints"
 
     search_service = ObjectSearchService(real_client)
     directory_options = await search_service.find_objects_by_class(
         class_id=linked_class_id, parent_id=parent_id
     )
-    expected_object = next(
-        (
-            opt
-            for opt in directory_options
-            if opt.Name.lower() == target_link_value.lower()
-        ),
+    expected_object_raw = next(
+        (opt for opt in directory_options if opt.Name.lower() == target_link_value.lower()),
         None,
     )
     assert (
-        expected_object
-    ), f"Не удалось динамически найти объект '{target_link_value}' в справочнике для проверки"
-    
-    # Теперь мы ожидаем получить целый объект, а не только ID
+        expected_object_raw
+    ), f"Не удалось динамически найти объект '{target_link_value}' в справочнике"
+
     expected_link_object = {
-        "Id": str(expected_object.Id),
-        "Name": expected_object.Name,
+        "Id": str(expected_object_raw.Id),
+        "Name": expected_object_raw.Name,
     }
 
-    # 4. Выполняем тестируемый метод
-    blueprint = await factory.create_from_user_data(
-        user_data=user_data,
-        class_name=class_name,
-        class_id=class_id,
-        attributes_meta=attributes_meta,
-    )
+    # 3. Выполняем тестируемый метод
+    blueprint = await factory.create(user_data)
 
-    # 5. Проверяем результат
+    # 4. Проверяем результат
     assert blueprint is not None
-    assert blueprint.user_data == user_data
-    assert not blueprint.errors
 
-    # Проверяем, что в display_representation сохранилось оригинальное значение
-    assert (
-        blueprint.display_representation.get("ИР Адепт - Primavera") == target_link_value
-    ), "В display_representation должно было сохраниться исходное строковое значение"
-
-    # Проверяем, что в итоговой модели значение преобразовано в ОБЪЕКТ
-    instance = blueprint.model_instance
+    # Получаем ожидаемое имя поля и проверяем значение
     from neosintez_api.utils import generate_field_name
+    expected_field_name = generate_field_name("ИР Адепт - Primavera")
 
-    field_name = generate_field_name("ИР Адепт - Primavera")
-    actual_value = getattr(instance, field_name)
+    actual_link_value = getattr(blueprint.model_instance, expected_field_name)
+    assert actual_link_value == expected_link_object
 
-    assert (
-        actual_value == expected_link_object
-    ), f"Ожидался объект '{expected_link_object}', но был получен '{actual_value}'" 
+
+@pytest.mark.asyncio
+async def test_create_raises_validation_error_for_bad_data(factory: DynamicModelFactory):
+    """
+    Тестирует, что фабрика вызывает ValidationError при некорректных данных,
+    например, когда тип значения атрибута не соответствует ожидаемому.
+    """
+    user_data = {
+        "Класс": "Стройка",
+        "Имя объекта": "Тестовая стройка с невалидным атрибутом",
+        "ID стройки Адепт": "это-не-число",  # Атрибут ожидает число
+    }
+
+    with pytest.raises(ValidationError) as excinfo:
+        await factory.create(user_data)
+
+    # Проверяем, что ошибка содержит информацию о проблеме с парсингом
+    assert "ID стройки Адепт" in str(excinfo.value)
+    assert "unable to parse string as a number" in str(excinfo.value) 

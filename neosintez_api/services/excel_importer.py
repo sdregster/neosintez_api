@@ -254,6 +254,10 @@ class ExcelImporter:
             created_objects = []
             created_by_level: Dict[int, int] = {}
             errors = []
+            warnings = list(preview.validation_warnings)  # Начинаем с предупреждений из preview
+
+            # Новый сет для отслеживания ID объектов, которые не удалось создать или были пропущены
+            failed_or_skipped_virtual_ids = set()
 
             # Карта для отслеживания реальных ID по виртуальным
             virtual_to_real_id_map: Dict[str, str] = {parent_id: parent_id}
@@ -270,16 +274,29 @@ class ExcelImporter:
             for level in sorted(objects_by_level.keys()):
                 logger.info(f"Создание объектов на уровне {level}")
                 requests_to_process = []
+                batch_virtual_ids = set()
 
                 for obj_data in objects_by_level[level]:
-                    # Заменяем виртуальный родительский ID на реальный
+                    virtual_id = obj_data["virtual_id"]
                     virtual_parent_id = obj_data["parent_id"]
+
+                    # Пропускаем объект, если его родитель не был создан
+                    if virtual_parent_id in failed_or_skipped_virtual_ids:
+                        failed_or_skipped_virtual_ids.add(virtual_id)
+                        continue
+
+                    # Заменяем виртуальный родительский ID на реальный
                     real_parent_id = virtual_to_real_id_map.get(virtual_parent_id)
 
                     if not real_parent_id:
-                        error_msg = f"Не удалось найти реальный ID для родительского объекта {virtual_parent_id}"
-                        logger.error(error_msg)
-                        errors.append(error_msg)
+                        # Родитель не найден, значит ветка сломана.
+                        # Добавляем ошибку один раз и пропускаем всю ветку без лишних логов.
+                        if virtual_parent_id not in failed_or_skipped_virtual_ids:
+                            errors.append(
+                                f"Не найден родительский объект с ID '{virtual_parent_id}' для создания '{obj_data['name']}'. "
+                                "Ветка импорта пропущена."
+                            )
+                        failed_or_skipped_virtual_ids.add(virtual_id)
                         continue
 
                     # Создаем модель Pydantic для создания объекта
@@ -295,20 +312,23 @@ class ExcelImporter:
 
                         # Добавляем запрос в список на обработку,
                         # передавая всю необходимую мета-информацию
-                        requests_to_process.append(
-                            CreateRequest(
-                                model=blueprint.model_instance,
-                                class_id=blueprint.class_id,
-                                class_name=blueprint.class_name,
-                                attributes_meta=blueprint.attributes_meta,
-                                parent_id=real_parent_id,
-                                virtual_id=obj_data["virtual_id"],
-                            )
+                        request = CreateRequest(
+                            model=blueprint.model_instance,
+                            class_id=blueprint.class_id,
+                            class_name=blueprint.class_name,
+                            attributes_meta=blueprint.attributes_meta,
+                            parent_id=real_parent_id,
+                            virtual_id=obj_data["virtual_id"],
                         )
+                        requests_to_process.append(request)
+                        batch_virtual_ids.add(request.virtual_id)
+
                     except Exception as e:
                         error_msg = f"Ошибка подготовки данных для объекта '{obj_data['name']}': {e}"
                         logger.error(error_msg, exc_info=True)
                         errors.append(error_msg)
+                        # Если подготовка не удалась, считаем объект сбойным
+                        failed_or_skipped_virtual_ids.add(obj_data["virtual_id"])
 
                 if not requests_to_process:
                     continue
@@ -319,6 +339,7 @@ class ExcelImporter:
                     creation_result = await self.object_service.create_many(requests_to_process)
 
                     # Обрабатываем успешные результаты
+                    succeeded_virtual_ids = set()
                     for created_model in creation_result.created_models:
                         # Находим исходный запрос по инстансу модели.
                         # Это надежно, так как ObjectService мутирует исходный объект.
@@ -330,6 +351,7 @@ class ExcelImporter:
                             virtual_id = original_request.virtual_id
                             real_id = created_model._id
                             virtual_to_real_id_map[virtual_id] = real_id
+                            succeeded_virtual_ids.add(virtual_id)
 
                             # Ищем исходные данные по virtual_id для отчета
                             source_data = next(
@@ -349,6 +371,10 @@ class ExcelImporter:
                                 f"Не удалось найти исходный запрос для созданного объекта с ID {created_model._id}"
                             )
 
+                    # Определяем сбои на уровне через разницу множеств
+                    level_failures = batch_virtual_ids - succeeded_virtual_ids
+                    failed_or_skipped_virtual_ids.update(level_failures)
+
                     # Добавляем ошибки из результата пакетной операции
                     if creation_result.errors:
                         errors.extend(creation_result.errors)
@@ -357,6 +383,8 @@ class ExcelImporter:
                     error_msg = f"Критическая ошибка при пакетном создании объектов на уровне {level}: {e}"
                     logger.error(error_msg, exc_info=True)
                     errors.append(error_msg)
+                    # Если вся пачка упала, все ID в ней считаются сбойными
+                    failed_or_skipped_virtual_ids.update(batch_virtual_ids)
 
             duration = (datetime.now() - start_time).total_seconds()
             logger.info(f"Импорт завершен за {duration:.2f} сек.")
@@ -366,7 +394,7 @@ class ExcelImporter:
                 created_by_level=created_by_level,
                 created_objects=created_objects,
                 errors=errors,
-                warnings=preview.validation_warnings,
+                warnings=warnings,
                 duration_seconds=duration,
             )
 

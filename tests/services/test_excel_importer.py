@@ -91,6 +91,25 @@ MISSING_KEY_DATA = [
     {"Уровень": 2, "Класс": "Стройка", "Имя объекта": "Этот объект не должен быть создан"},
 ]
 
+RUNTIME_FAILURE_HIERARCHY_DATA = [
+    # Уровень 1, этот объект вызовет ошибку при установке атрибутов
+    {
+        "Уровень": 1,
+        "Класс": "Стройка",
+        "Имя объекта": "Родитель с ошибкой во время выполнения",
+        "ID стройки Адепт": "ЭТО-НЕ-ЧИСЛО",  # Атрибут ожидает число, вызовет ошибку 400
+        "МВЗ": "ABC-FAIL-1",
+    },
+    # Уровень 2, дочерний элемент, который не должен быть создан
+    {
+        "Уровень": 2,
+        "Класс": "Стройка",
+        "Имя объекта": "Пропущенный дочерний элемент",
+        "ID стройки Адепт": 2000,
+        "МВЗ": "ABC-FAIL-2",
+    },
+]
+
 
 @pytest.fixture(scope="module")
 def test_excel_file_path(tmp_path_factory) -> Path:
@@ -142,6 +161,15 @@ def missing_key_data_excel_file_path(tmp_path_factory) -> Path:
     """Создает тестовый Excel-файл со строкой, где отсутствуют ключевые данные."""
     path = tmp_path_factory.mktemp("data") / "missing_key_data.xlsx"
     df = pd.DataFrame(MISSING_KEY_DATA)
+    df.to_excel(path, index=False)
+    return path
+
+
+@pytest.fixture(scope="module")
+def runtime_failure_excel_file_path(tmp_path_factory) -> Path:
+    """Создает тестовый Excel-файл, который вызовет ошибку во время выполнения."""
+    path = tmp_path_factory.mktemp("data") / "runtime_failure.xlsx"
+    df = pd.DataFrame(RUNTIME_FAILURE_HIERARCHY_DATA)
     df.to_excel(path, index=False)
     return path
 
@@ -433,3 +461,41 @@ class TestExcelImporter:
             if result.created_objects:
                 for obj in result.created_objects:
                     await object_service.delete(obj["id"])
+
+    async def test_import_with_runtime_parent_failure_is_clean(
+        self,
+        excel_importer: ExcelImporter,
+        runtime_failure_excel_file_path: Path,
+        object_service: ObjectService,
+    ):
+        """
+        Проверяет, что при сбое создания родительского объекта во время выполнения,
+        дочерние объекты пропускаются без лишних сообщений об ошибках.
+        """
+        result = await excel_importer.import_from_excel(
+            excel_path=str(runtime_failure_excel_file_path),
+            parent_id=settings.test_folder_id,
+        )
+        created_ids = [obj["id"] for obj in result.created_objects]
+
+        try:
+            # 1. Ни один объект не должен быть создан, так как родитель упал.
+            assert result.total_created == 0, "Объекты не должны были создаться"
+            assert not created_ids, "Список созданных объектов должен быть пуст"
+
+            # 2. Должна быть только ОДНА ошибка от API.
+            # Никаких "Не удалось найти реальный ID..."
+            assert len(result.errors) == 1, "Должна быть только одна ошибка"
+
+            # 3. Проверяем содержание ошибки
+            error_text = result.errors[0]
+            assert "Ошибка подготовки данных" in error_text, "Должна быть ошибка подготовки данных"
+            # Проверяем, что это ошибка валидации Pydantic
+            assert "unable to parse string as a number" in error_text, "Должна быть ошибка парсинга числа Pydantic"
+            assert "Не найден родительский объект" not in error_text
+
+        finally:
+            # На случай, если что-то все-таки создалось вопреки логике
+            if created_ids:
+                for obj_id in created_ids:
+                    await object_service.delete(obj_id)
