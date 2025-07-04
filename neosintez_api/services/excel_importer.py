@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from neosintez_api.core.exceptions import NeosintezAPIError
 
 from ..core.client import NeosintezClient
+from ..core.enums import WioAttributeType
 from .class_service import ClassService
 from .factories import DynamicModelFactory
 from .object_service import CreateRequest, ObjectService
@@ -81,6 +82,7 @@ class ExcelImporter:
             name_aliases=self.NAME_COLUMN_NAMES,
             class_name_aliases=self.CLASS_COLUMN_NAMES,
         )
+        self._class_attributes_cache: Dict[str, Dict[str, Any]] = {}
 
     async def analyze_structure(self, excel_path: str, worksheet_name: Optional[str] = None) -> ExcelStructure:
         """
@@ -299,13 +301,28 @@ class ExcelImporter:
                         failed_or_skipped_virtual_ids.add(virtual_id)
                         continue
 
+                    # --- НОВОЕ: Конвертация типов атрибутов перед созданием модели ---
+                    converted_attributes = {}
+                    class_name = obj_data["class_name"]
+                    attributes_meta = self._class_attributes_cache.get(class_name)
+
+                    if attributes_meta:
+                        for attr_name, value in obj_data["attributes"].items():
+                            converted_attributes[attr_name] = self._convert_attribute_value(
+                                value, attr_name, attributes_meta
+                            )
+                    else:
+                        # Если метаданные не найдены, используем исходные атрибуты
+                        converted_attributes = obj_data["attributes"]
+                    # --- КОНЕЦ НОВОГО БЛОКА ---
+
                     # Создаем модель Pydantic для создания объекта
                     try:
                         # Готовим данные для фабрики
                         user_data_for_factory = {
                             "Класс": obj_data["class_name"],
                             "Имя объекта": obj_data["name"],
-                            **obj_data["attributes"],
+                            **converted_attributes,  # Используем конвертированные атрибуты
                         }
                         # Фабрика вернет "чертеж" с готовой моделью
                         blueprint = await self.factory.create(user_data_for_factory)
@@ -568,14 +585,13 @@ class ExcelImporter:
                 last_level = level
 
             # Проверяем атрибуты
-            class_attributes_cache = {}
             for obj_data in objects_to_create:
                 class_name = obj_data.get("class_name")
                 if not class_name:
                     continue  # Ошибка отсутствия класса уже обработана в _load_objects_sequentially
 
                 # Получаем атрибуты класса (с кэшированием внутри этого метода)
-                if class_name not in class_attributes_cache:
+                if class_name not in self._class_attributes_cache:
                     try:
                         found_classes = await self.class_service.find_by_name(class_name)
                         # Ищем точное совпадение имени, нечувствительное к регистру
@@ -583,15 +599,15 @@ class ExcelImporter:
 
                         if class_info:
                             class_attributes = await self.class_service.get_attributes(str(class_info.Id))
-                            class_attributes_cache[class_name] = {attr.Name: attr for attr in class_attributes}
+                            self._class_attributes_cache[class_name] = {attr.Name: attr for attr in class_attributes}
                         else:
-                            class_attributes_cache[class_name] = None
+                            self._class_attributes_cache[class_name] = None
                     except Exception as e:
                         logger.warning(f"Не удалось получить атрибуты для класса '{class_name}': {e}")
-                        class_attributes_cache[class_name] = None
+                        self._class_attributes_cache[class_name] = None
                         continue
 
-                attributes_meta = class_attributes_cache[class_name]
+                attributes_meta = self._class_attributes_cache[class_name]
                 if not attributes_meta:
                     if f"Класс '{class_name}' не найден в системе." not in errors:
                         errors.append(f"Класс '{class_name}' не найден в системе.")
@@ -630,3 +646,41 @@ class ExcelImporter:
             errors.append(f"Непредвиденная ошибка при валидации: {e}")
 
         return errors, warnings
+
+    def _convert_attribute_value(self, value: Any, attr_name: str, attributes_meta: Dict[str, Any]) -> Any:
+        """
+        Конвертирует значение атрибута в целевой тип Neosintez.
+
+        Args:
+            value: Исходное значение из Excel.
+            attr_name: Имя атрибута.
+            attributes_meta: Метаданные атрибутов класса.
+
+        Returns:
+            Сконвертированное значение.
+        """
+        if value is None or pd.isna(value):
+            return None
+
+        attr_meta = attributes_meta.get(attr_name)
+        if not attr_meta:
+            # Если метаданные не найдены, возвращаем как есть
+            return value
+
+        # Определяем ID типа атрибута
+        attr_type_obj = getattr(attr_meta, "Type", None)
+
+        # Проверяем, что Type - это объект Pydantic с полем Id, иначе используем как есть
+        if isinstance(attr_type_obj, BaseModel) and hasattr(attr_type_obj, "Id"):
+            attr_type_id = attr_type_obj.Id
+        else:
+            attr_type_id = attr_type_obj
+
+        # Простая логика конвертации
+        if attr_type_id in (WioAttributeType.STRING.value, WioAttributeType.TEXT.value):
+            # Если целевой тип - строка или текст, приводим к строке
+            return str(value)
+        # TODO: Добавить конвертацию для других типов (NUMBER, DATE, etc.) по мере необходимости
+
+        # Если тип не требует специальной конвертации, возвращаем как есть
+        return value
