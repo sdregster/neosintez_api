@@ -28,10 +28,14 @@ class ObjectMapper:
             Список атрибутов для API в формате [{"Id": "...", "Value": "..."}, ...].
         """
         attributes = []
-        model_fields = model.model_fields
+        model_fields = model.__class__.model_fields
         standard_fields = {"id", "name", "class_id", "parent_id"}
 
         for field_name, field_info in model_fields.items():
+            # Пропускаем системные поля, которые не являются атрибутами
+            if field_name.startswith("_"):
+                continue
+
             # Пропускаем стандартные поля, которые не являются атрибутами
             if field_name in standard_fields:
                 continue

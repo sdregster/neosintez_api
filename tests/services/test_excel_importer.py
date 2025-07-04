@@ -1,0 +1,262 @@
+"""
+Интеграционные тесты для `ExcelImporter`.
+
+Проверяют полный цикл иерархического импорта из Excel-файла:
+- Анализ структуры файла.
+- Предварительный просмотр.
+- Валидация данных.
+- Поуровневое создание объектов.
+- Проверка созданной иерархии.
+- Очистка созданных данных.
+"""
+
+from pathlib import Path
+
+import pandas as pd
+import pytest
+import pytest_asyncio
+
+from neosintez_api.config import settings
+from neosintez_api.core.client import NeosintezClient
+from neosintez_api.services import ObjectService
+from neosintez_api.services.excel_importer import ExcelImporter, ImportResult
+from neosintez_api.services.factories import DynamicModelFactory
+
+
+pytestmark = pytest.mark.asyncio
+
+
+HIERARCHY_DATA = [
+    # Уровень 1
+    {
+        "Уровень": 1,
+        "Класс": "Стройка",
+        "Имя объекта": "Тестовый проект-стройка",
+        "ID стройки Адепт": 999,
+        "МВЗ": "ABC-1",
+    },
+    # Уровень 2. Используем тот же класс "Стройка" для проверки иерархии
+    {
+        "Уровень": 2,
+        "Класс": "Стройка",
+        "Имя объекта": "Дочерний элемент-стройка",
+        "ID стройки Адепт": 1000,
+        "МВЗ": "ABC-2",
+    },
+    # Уровень 3.
+    {
+        "Уровень": 3,
+        "Класс": "Стройка",
+        "Имя объекта": "Внучатый элемент-стройка",
+        "ID стройки Адепт": 1001,
+        "МВЗ": "ABC-3",
+    },
+]
+
+INVALID_CLASS_DATA = [
+    {"Уровень": 1, "Класс": "НесуществующийКласс", "Имя объекта": "Объект с ошибкой класса"},
+]
+
+INVALID_ATTRIBUTE_DATA = [
+    {"Уровень": 1, "Класс": "Стройка", "Имя объекта": "Объект с ошибкой атрибута", "НесуществующийАтрибут": "значение"},
+]
+
+
+@pytest.fixture(scope="module")
+def test_excel_file_path(tmp_path_factory) -> Path:
+    """Создает тестовый Excel-файл и возвращает путь к нему."""
+    path = tmp_path_factory.mktemp("data") / "test_import.xlsx"
+    df = pd.DataFrame(HIERARCHY_DATA)
+    df.to_excel(path, index=False)
+    return path
+
+
+@pytest.fixture(scope="module")
+def invalid_class_excel_file_path(tmp_path_factory) -> Path:
+    """Создает тестовый Excel-файл с ошибкой в имени класса."""
+    path = tmp_path_factory.mktemp("data") / "invalid_class.xlsx"
+    df = pd.DataFrame(INVALID_CLASS_DATA)
+    df.to_excel(path, index=False)
+    return path
+
+
+@pytest.fixture(scope="module")
+def invalid_attribute_excel_file_path(tmp_path_factory) -> Path:
+    """Создает тестовый Excel-файл с ошибкой в имени атрибута."""
+    path = tmp_path_factory.mktemp("data") / "invalid_attribute.xlsx"
+    df = pd.DataFrame(INVALID_ATTRIBUTE_DATA)
+    df.to_excel(path, index=False)
+    return path
+
+
+@pytest.fixture
+def excel_importer(real_client: NeosintezClient) -> ExcelImporter:
+    """Фикстура для создания экземпляра ExcelImporter."""
+    return ExcelImporter(real_client)
+
+
+@pytest_asyncio.fixture
+async def managed_import(
+    excel_importer: ExcelImporter,
+    object_service: ObjectService,
+    test_excel_file_path: Path,
+) -> ImportResult:
+    """
+    Выполняет импорт и гарантирует удаление созданных объектов после теста.
+    """
+    created_ids = []
+
+    result = await excel_importer.import_from_excel(
+        excel_path=str(test_excel_file_path),
+        parent_id=settings.test_folder_id,
+    )
+    assert not result.errors, f"Во время импорта возникли ошибки: {result.errors}"
+    assert result.total_created == len(HIERARCHY_DATA), "Не все объекты были созданы"
+
+    for obj in result.created_objects:
+        created_ids.append(obj["id"])
+
+    yield result
+
+    # --- Очистка ---
+    if not created_ids:
+        return
+
+    print(f"Очистка тестовых данных: удаление {len(created_ids)} объектов...")
+    try:
+        # TODO: Заменить на delete_many, когда он будет реализован
+        for obj_id in created_ids:
+            await object_service.delete(obj_id)
+        print("Очистка успешно завершена.")
+    except Exception as e:
+        pytest.fail(f"Не удалось удалить тестовые объекты: {e}")
+
+
+class TestExcelImporter:
+    """Тестирование иерархического импорта из Excel."""
+
+    async def test_analyze_structure(
+        self,
+        excel_importer: ExcelImporter,
+        test_excel_file_path: Path,
+    ):
+        """Тестирует корректность анализа структуры Excel файла."""
+        structure = await excel_importer.analyze_structure(str(test_excel_file_path))
+
+        assert structure.level_column == 0
+        assert structure.class_column == 1
+        assert structure.name_column == 2
+        assert structure.total_rows == len(HIERARCHY_DATA)
+        assert structure.max_level == 3
+        assert set(structure.classes_found) == {"Стройка"}
+        # Проверяем, что все остальные колонки попали в атрибуты
+        expected_attrs = {"ID стройки Адепт", "МВЗ"}
+        assert set(structure.attribute_columns.values()) == expected_attrs
+
+    async def test_preview_with_invalid_class(
+        self,
+        excel_importer: ExcelImporter,
+        invalid_class_excel_file_path: Path,
+    ):
+        """
+        Проверяет, что preview_import корректно находит ошибку несуществующего класса.
+        """
+        preview = await excel_importer.preview_import(
+            excel_path=str(invalid_class_excel_file_path),
+            parent_id=settings.test_folder_id,
+        )
+
+        assert len(preview.validation_errors) == 1
+        assert "Класс 'НесуществующийКласс' не найден" in preview.validation_errors[0]
+
+    async def test_preview_with_invalid_attribute(
+        self,
+        excel_importer: ExcelImporter,
+        invalid_attribute_excel_file_path: Path,
+    ):
+        """
+        Проверяет, что preview_import корректно находит ошибку несуществующего атрибута.
+        """
+        preview = await excel_importer.preview_import(
+            excel_path=str(invalid_attribute_excel_file_path),
+            parent_id=settings.test_folder_id,
+        )
+
+        assert len(preview.validation_errors) == 1
+        assert "Атрибут 'НесуществующийАтрибут' не найден в классе 'Стройка'" in preview.validation_errors[0]
+
+    async def test_import_and_attributes_verification(
+        self,
+        managed_import: ImportResult,
+        dynamic_model_factory: DynamicModelFactory,
+        object_service: ObjectService,
+    ):
+        """
+        Тестирует импорт и проверяет корректность установки атрибутов.
+        """
+        result = managed_import
+        assert result.total_created == len(HIERARCHY_DATA)
+
+        # Создадим словарь "имя объекта -> id" для удобства
+        id_map = {obj["name"]: obj["id"] for obj in result.created_objects}
+
+        # --- Проверка объекта "Стройка" ---
+        stroyka_data = HIERARCHY_DATA[0]
+        stroyka_id = id_map[stroyka_data["Имя объекта"]]
+        StroykaModel = (await dynamic_model_factory.create({"Класс": "Стройка", "Имя объекта": "fake"})).model_class
+        stroyka_obj = await object_service.read(stroyka_id, StroykaModel)
+
+        assert stroyka_obj.name == stroyka_data["Имя объекта"]
+        assert stroyka_obj.id_stroyki_adept == stroyka_data["ID стройки Адепт"]
+        assert stroyka_obj.mvz == stroyka_data["МВЗ"]
+
+        # --- Проверка дочернего объекта ---
+        child_data = HIERARCHY_DATA[1]
+        child_id = id_map[child_data["Имя объекта"]]
+        child_obj = await object_service.read(child_id, StroykaModel)  # Используем ту же модель
+
+        assert child_obj.name == child_data["Имя объекта"]
+        assert child_obj.id_stroyki_adept == child_data["ID стройки Адепт"]
+        assert child_obj.mvz == child_data["МВЗ"]
+
+    async def test_full_import_and_hierarchy(
+        self,
+        managed_import: ImportResult,
+        object_service: ObjectService,
+        real_client: NeosintezClient,
+        dynamic_model_factory: DynamicModelFactory,
+    ):
+        """
+        Тестирует полный цикл импорта и проверяет правильность выстроенной иерархии.
+        """
+        result = managed_import
+
+        # 1. Проверяем результат импорта
+        assert result.total_created == len(HIERARCHY_DATA)
+        assert result.created_by_level == {1: 1, 2: 1, 3: 1}
+        assert not result.errors
+
+        # 2. Проверяем иерархию в Неосинтезе
+        id_map = {obj["name"]: obj["id"] for obj in result.created_objects}
+
+        # Проверяем родителей каждого объекта
+        project_id = id_map["Тестовый проект-стройка"]
+        child_id = id_map["Дочерний элемент-стройка"]
+        grandchild_id = id_map["Внучатый элемент-стройка"]
+
+        # Используем object_service.read, чтобы получить модели с заполненными _parent_id
+        StroykaModel = (await dynamic_model_factory.create(
+            {"Класс": "Стройка", "Имя объекта": "fake"}
+        )).model_class
+
+        # Объекты 1-го уровня
+        project_obj = await object_service.read(project_id, StroykaModel)
+        assert project_obj._parent_id == settings.test_folder_id
+
+        # Объекты 2-го уровня
+        child_obj = await object_service.read(child_id, StroykaModel)
+        assert child_obj._parent_id == project_id
+        
+        # Объекты 3-го уровня
+        grandchild_obj = await object_service.read(grandchild_id, StroykaModel)
+        assert grandchild_obj._parent_id == child_id

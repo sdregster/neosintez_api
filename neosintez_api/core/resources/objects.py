@@ -29,7 +29,7 @@ class ObjectsResource(BaseResource):
     Ресурсный класс для работы с объектами в API Неосинтез.
     """
 
-    async def get_by_id(self, object_id: Union[str, UUID]) -> NeoObject:
+    async def get_by_id(self, object_id: Union[str, UUID]) -> Dict[str, Any]:
         """
         Получает объект по его ID.
 
@@ -37,7 +37,7 @@ class ObjectsResource(BaseResource):
             object_id: ID объекта
 
         Returns:
-            NeoObject: Объект
+            Dict[str, Any]: Словарь с данными объекта
 
         Raises:
             NeosintezAPIError: Если объект не найден
@@ -50,7 +50,7 @@ class ObjectsResource(BaseResource):
             if "Entity" in result and isinstance(result["Entity"], dict) and "Id" in result["Entity"]:
                 result["EntityId"] = result["Entity"]["Id"]
 
-            return NeoObject.model_validate(result)
+            return result
 
         from ...exceptions import NeosintezAPIError
 

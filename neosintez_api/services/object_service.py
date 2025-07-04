@@ -114,7 +114,7 @@ class ObjectService(Generic[T]):
             model_for_api = model.model_copy(deep=True)
 
             # Разрешаем ссылочные атрибуты
-            for field_name, field_info in model.model_fields.items():
+            for field_name, field_info in model.__class__.model_fields.items():
                 if field_info.alias and field_info.alias in attributes_meta:
                     attr_meta = attributes_meta[field_info.alias]
                     attr_value = getattr(model_for_api, field_name)
@@ -254,18 +254,11 @@ class ObjectService(Generic[T]):
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Получен объект {object_id} и его путь.")
 
-            class_id = object_data.EntityId
+            class_id = object_data["EntityId"]
 
             # 2. Получаем метаданные атрибутов класса
-            # ВРЕМЕННОЕ РЕШЕНИЕ: Принудительно запрашиваем атрибуты напрямую из API,
-            # чтобы обойти проблему с форматом данных в кэше ClassService.
-            class_attributes = await self.client.classes.get_attributes(class_id)
-            attr_id_to_name = {
-                str(attr.Id if hasattr(attr, "Id") else attr["Id"]): (
-                    attr.Name if hasattr(attr, "Name") else attr["Name"]
-                )
-                for attr in class_attributes
-            }
+            class_attributes = await self.class_service.get_attributes(str(class_id))
+            attr_id_to_name = {str(attr.Id): attr.Name for attr in class_attributes}
 
             # Строим карту для сопоставления имени атрибута API с именем поля модели
             alias_to_field_map = {(f.alias or n): n for n, f in model_class.model_fields.items()}
@@ -279,11 +272,11 @@ class ObjectService(Generic[T]):
             # 4. Собираем данные для создания модели
             flat_data = {}
             if "name" in model_class.model_fields:
-                flat_data["name"] = object_data.Name
+                flat_data["name"] = object_data["Name"]
 
             # 5. Извлекаем и преобразуем атрибуты
-            if hasattr(object_data, "Attributes") and object_data.Attributes:
-                for attr_id_str, attr_value_data in object_data.Attributes.items():
+            if "Attributes" in object_data and object_data["Attributes"]:
+                for attr_id_str, attr_value_data in object_data["Attributes"].items():
                     api_attr_name = attr_id_to_name.get(attr_id_str)
                     if not api_attr_name:
                         logger.warning(f"Атрибут с ID {attr_id_str} не найден в метаданных класса.")
@@ -381,8 +374,8 @@ class ObjectService(Generic[T]):
         update_tasks = []
 
         # --- Сравнение и добавление задачи на переименование ---
-        if model.name != current_data.Name:
-            logger.debug(f"Обнаружено изменение имени: '{current_data.Name}' -> '{model.name}'.")
+        if model.name != current_data["Name"]:
+            logger.info(f"Обнаружено изменение имени: '{current_data['Name']}' -> '{model.name}'")
             update_tasks.append(self.client.objects.rename(object_id, model.name))
 
         # --- Сравнение и добавление задачи на перемещение ---
@@ -394,21 +387,31 @@ class ObjectService(Generic[T]):
             logger.debug(f"Обнаружено изменение родителя: '{current_parent_id}' -> '{model._parent_id}'.")
             update_tasks.append(self.client.objects.move(object_id, model._parent_id))
 
-        # --- Сравнение и добавление задачи на обновление атрибутов ---
+        # --- Сравнение и обновление атрибутов ---
+        # Получаем текущие значения атрибутов из `current_data`
+        current_attributes = {}
+        if "Attributes" in current_data and current_data["Attributes"]:
+            for attr_id_str, attr_data in current_data["Attributes"].items():
+                attr_meta = next((attr for attr in class_attributes if str(attr.Id) == attr_id_str), None)
+                if attr_meta:
+                    current_attributes[attr_meta.Name] = attr_data.get("Value")
+
+        # Готовим модель для отправки в API: разрешаем ссылочные атрибуты
         model_for_api = await self._prepare_model_for_api(model, attributes_meta)
 
-        attributes_to_update = await self._get_changed_attributes(
+        # Получаем желаемые значения атрибутов из Pydantic модели
+        new_attributes = await self._get_changed_attributes(
             model=model_for_api,
             attributes_meta=attributes_meta,
-            current_attributes=current_data.Attributes,
+            current_attributes=current_attributes,
         )
-        if attributes_to_update:
-            logger.debug(f"Обнаружено {len(attributes_to_update)} измененных атрибутов.")
-            update_tasks.append(self.client.objects.set_attributes(object_id, attributes_to_update))
+        if new_attributes:
+            logger.debug(f"Обнаружено {len(new_attributes)} измененных атрибутов.")
+            update_tasks.append(self.client.objects.set_attributes(object_id, new_attributes))
 
         # 3. Выполняем все запланированные задачи
         if update_tasks:
-            logger.info(f"Запланировано {len(update_tasks)} операций обновления.")
+            logger.info(f"Выполнение {len(update_tasks)} задач на обновление...")
             await asyncio.gather(*update_tasks)
             logger.info(f"Все операции для объекта {object_id} успешно выполнены.")
         else:
@@ -419,30 +422,49 @@ class ObjectService(Generic[T]):
         logger.info(f"Повторное чтение объекта {object_id} для возврата актуальной модели.")
         return await self.read(object_id, model.__class__)
 
-    async def _prepare_model_for_api(self, model: T, attributes_meta: Dict[str, Any]) -> T:
+    async def _prepare_model_for_api(
+        self,
+        model: "NeosintezBaseModel",
+        attributes_meta: Dict[str, Any]
+    ) -> "NeosintezBaseModel":
         """
-        Создает копию модели и разрешает в ней ссылочные атрибуты.
+        Подготавливает модель к отправке в API, разрешая строковые значения
+        ссылочных атрибутов в объекты-словари.
         """
-        model_for_api = model.model_copy(deep=True)
-        for field_name, field_info in model.model_fields.items():
-            if field_info.alias and field_info.alias in attributes_meta:
-                attr_meta = attributes_meta[field_info.alias]
-                attr_value = getattr(model_for_api, field_name)
+        model_copy = model.model_copy(deep=True)
+        model_fields = model_copy.__class__.model_fields
 
-                if attr_meta.Type == 8 and isinstance(attr_value, str):
-                    try:
-                        resolved_obj = await self.resolver.resolve_link_attribute_as_object(
-                            attr_meta=attr_meta, attr_value=attr_value
-                        )
-                        setattr(model_for_api, field_name, resolved_obj)
-                    except ValueError as e:
+        for field_name, field_info in model_fields.items():
+            alias = field_info.alias
+            if not alias or alias not in attributes_meta:
+                continue
+
+            attr_meta = attributes_meta[alias]
+            if attr_meta.Type != 8:  # 8 - тип "Ссылка на объект"
+                continue
+
+            value = getattr(model_copy, field_name)
+            # Если значение - строка, его нужно разрешить в объект
+            if isinstance(value, str):
+                try:
+                    resolved_obj = await self.resolver.resolve_link_attribute_as_object(
+                        attr_meta=attr_meta, attr_value=value
+                    )
+                    if resolved_obj:
+                        setattr(model_copy, field_name, resolved_obj)
+                    else:
                         logger.warning(
-                            f"Не удалось разрешить значение '{attr_value}' для ссылочного "
-                            f"атрибута '{attr_meta.Name}'. Атрибут будет пропущен. Ошибка: {e}"
+                            f"Не удалось разрешить значение '{value}' для ссылочного атрибута '{alias}'. "
+                            f"Атрибут будет пропущен при обновлении."
                         )
-                        # Пропускаем атрибут, не устанавливая его
-                        setattr(model_for_api, field_name, None)
-        return model_for_api
+                        setattr(model_copy, field_name, None)
+                except Exception:
+                    logger.exception(
+                        f"Ошибка при разрешении значения '{value}' для атрибута '{alias}'"
+                    )
+                    setattr(model_copy, field_name, None)
+
+        return model_copy
 
     async def _get_changed_attributes(
         self,
