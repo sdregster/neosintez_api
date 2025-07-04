@@ -63,16 +63,12 @@ async def test_create_from_user_data_with_link_attribute(
     assert linked_class_id, "Не удалось извлечь ID класса справочника из Constraints"
 
     search_service = ObjectSearchService(real_client)
-    directory_options = await search_service.find_objects_by_class(
-        class_id=linked_class_id, parent_id=parent_id
-    )
+    directory_options = await search_service.find_objects_by_class(class_id=linked_class_id, parent_id=parent_id)
     expected_object_raw = next(
         (opt for opt in directory_options if opt.Name.lower() == target_link_value.lower()),
         None,
     )
-    assert (
-        expected_object_raw
-    ), f"Не удалось динамически найти объект '{target_link_value}' в справочнике"
+    assert expected_object_raw, f"Не удалось динамически найти объект '{target_link_value}' в справочнике"
 
     expected_link_object = {
         "Id": str(expected_object_raw.Id),
@@ -87,6 +83,7 @@ async def test_create_from_user_data_with_link_attribute(
 
     # Получаем ожидаемое имя поля и проверяем значение
     from neosintez_api.utils import generate_field_name
+
     expected_field_name = generate_field_name("ИР Адепт - Primavera")
 
     actual_link_value = getattr(blueprint.model_instance, expected_field_name)
@@ -110,4 +107,4 @@ async def test_create_raises_validation_error_for_bad_data(factory: DynamicModel
 
     # Проверяем, что ошибка содержит информацию о проблеме с парсингом
     assert "ID стройки Адепт" in str(excinfo.value)
-    assert "unable to parse string as a number" in str(excinfo.value) 
+    assert "unable to parse string as a number" in str(excinfo.value)

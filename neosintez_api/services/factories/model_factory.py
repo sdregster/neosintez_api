@@ -2,9 +2,9 @@
 Фабрика для динамического создания Pydantic-моделей на основе пользовательских данных.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
-import logging
 
 from pydantic import BaseModel, Field, create_model
 

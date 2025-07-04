@@ -98,20 +98,21 @@ class ObjectsResource(BaseResource):
         await self._request("PUT", endpoint, data=data)
         return True
 
-    async def delete(self, object_id: Union[str, UUID]) -> bool:
-        """
-        Удаляет объект.
+    # Реальное удаление объекта
+    # async def delete(self, object_id: Union[str, UUID]) -> bool:
+    #     """
+    #     Удаляет объект.
 
-        Args:
-            object_id: ID объекта
+    #     Args:
+    #         object_id: ID объекта
 
-        Returns:
-            bool: True, если удаление успешно
-        """
-        endpoint = f"api/objects/{object_id}"
+    #     Returns:
+    #         bool: True, если удаление успешно
+    #     """
+    #     endpoint = f"api/objects/{object_id}"
 
-        await self._request("DELETE", endpoint)
-        return True
+    #     await self._request("DELETE", endpoint)
+    #     return True
 
     async def get_children(self, parent_id: Union[str, UUID]) -> List[NeoObject]:
         """

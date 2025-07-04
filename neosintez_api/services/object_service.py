@@ -423,9 +423,7 @@ class ObjectService(Generic[T]):
         return await self.read(object_id, model.__class__)
 
     async def _prepare_model_for_api(
-        self,
-        model: "NeosintezBaseModel",
-        attributes_meta: Dict[str, Any]
+        self, model: "NeosintezBaseModel", attributes_meta: Dict[str, Any]
     ) -> "NeosintezBaseModel":
         """
         Подготавливает модель к отправке в API, разрешая строковые значения
@@ -459,9 +457,7 @@ class ObjectService(Generic[T]):
                         )
                         setattr(model_copy, field_name, None)
                 except Exception:
-                    logger.exception(
-                        f"Ошибка при разрешении значения '{value}' для атрибута '{alias}'"
-                    )
+                    logger.exception(f"Ошибка при разрешении значения '{value}' для атрибута '{alias}'")
                     setattr(model_copy, field_name, None)
 
         return model_copy

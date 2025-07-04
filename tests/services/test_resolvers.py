@@ -2,6 +2,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from neosintez_api.models import Attribute
 from neosintez_api.services.resolvers import AttributeResolver
 

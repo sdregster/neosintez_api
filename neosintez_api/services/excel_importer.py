@@ -343,10 +343,9 @@ class ExcelImporter:
                     for created_model in creation_result.created_models:
                         # Находим исходный запрос по инстансу модели.
                         # Это надежно, так как ObjectService мутирует исходный объект.
-                        original_request = next(
-                            (req for req in requests_to_process if req.model is created_model),
-                            None,
-                        )
+                        requests_iter = (req for req in requests_to_process if req.model is created_model)
+                        original_request = next(requests_iter, None)
+
                         if original_request:
                             virtual_id = original_request.virtual_id
                             real_id = created_model._id
@@ -479,8 +478,12 @@ class ExcelImporter:
                 name_raw = row.iloc[structure.name_column]
 
                 # Проверяем строки без класса или имени. Это критическая ошибка.
-                if pd.isna(class_name_raw) or str(class_name_raw).strip().lower() in ("", "nan") or \
-                   pd.isna(name_raw) or str(name_raw).strip() == "":
+                if (
+                    pd.isna(class_name_raw)
+                    or str(class_name_raw).strip().lower() in ("", "nan")
+                    or pd.isna(name_raw)
+                    or str(name_raw).strip() == ""
+                ):
                     error_msg = f"Строка {index + 2}: Отсутствуют обязательные данные (Класс или Имя объекта)."
                     logger.error(error_msg)
                     errors.append(error_msg)
@@ -550,12 +553,12 @@ class ExcelImporter:
             for i, obj_data in enumerate(objects_to_create):
                 level = obj_data.get("level")
                 if level is None:
-                    errors.append(f"В строке {i+2} отсутствует значение уровня.")
+                    errors.append(f"В строке {i + 2} отсутствует значение уровня.")
                     continue
 
                 if level > last_level + 1:
                     error_msg = (
-                        f"Нарушена иерархия в строке {i+2}: "
+                        f"Нарушена иерархия в строке {i + 2}: "
                         f"уровня {level} не может следовать за уровнем {last_level}. "
                         "Пропущен один или несколько уровней."
                     )
@@ -597,9 +600,7 @@ class ExcelImporter:
                 # Проверяем, что все атрибуты из файла существуют в классе
                 for attr_name in obj_data.get("attributes", {}):
                     if attr_name not in attributes_meta:
-                        warning_msg = (
-                            f"Атрибут '{attr_name}' не найден в классе '{class_name}' и будет проигнорирован."
-                        )
+                        warning_msg = f"Атрибут '{attr_name}' не найден в классе '{class_name}' и будет проигнорирован."
                         if warning_msg not in warnings:
                             warnings.append(warning_msg)
                     else:

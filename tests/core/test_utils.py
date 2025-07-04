@@ -1,5 +1,5 @@
 import uuid
-import pytest
+
 from neosintez_api.models import Attribute
 from neosintez_api.utils import build_attribute_body
 
@@ -50,6 +50,7 @@ def test_build_attribute_body_for_string_attribute():
         "Type": 2,
     }
     assert result == expected
+
 
 def test_build_attribute_body_for_int_attribute():
     """

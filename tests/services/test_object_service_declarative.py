@@ -1,14 +1,14 @@
-import pytest
-import pytest_asyncio
 import uuid
 
+import pytest
+import pytest_asyncio
 from pydantic import Field
 
 from neosintez_api import NeosintezClient
-from neosintez_api.models import NeosintezBaseModel
-from neosintez_api.services.object_service import ObjectService
 from neosintez_api.config import settings
 from neosintez_api.core.exceptions import NeosintezAPIError
+from neosintez_api.models import NeosintezBaseModel
+from neosintez_api.services.object_service import ObjectService
 
 
 # 1. Определение тестовой декларативной модели
@@ -60,7 +60,7 @@ async def test_declarative_create_read_delete_cycle(object_service: ObjectServic
         # Получаем сырые данные напрямую из API, чтобы быть уверенными
         raw_read_data = await real_client.objects.get_by_id(created_object._id)
 
-        assert raw_read_data['Name'] == unique_name
+        assert raw_read_data["Name"] == unique_name
 
         # Находим ID атрибута "ИР Адепт - Primavera"
         class_meta = await object_service.class_service.find_by_name("Стройка")
@@ -69,7 +69,7 @@ async def test_declarative_create_read_delete_cycle(object_service: ObjectServic
         assert link_attr_meta is not None
 
         # Проверяем, что значение ссылочного атрибута в API - это объект с ID
-        api_link_value = raw_read_data['Attributes'].get(str(link_attr_meta.Id))
+        api_link_value = raw_read_data["Attributes"].get(str(link_attr_meta.Id))
         assert api_link_value is not None
         assert isinstance(api_link_value, dict)
         assert "Id" in api_link_value

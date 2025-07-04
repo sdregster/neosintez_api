@@ -49,9 +49,7 @@ def class_service(real_client: NeosintezClient) -> ClassService:
 
 
 @pytest.fixture(scope="function")
-def dynamic_model_factory(
-    real_client: NeosintezClient, class_service: ClassService
-) -> DynamicModelFactory:
+def dynamic_model_factory(real_client: NeosintezClient, class_service: ClassService) -> DynamicModelFactory:
     """Экземпляр фабрики моделей с реальным клиентом и сервисом классов."""
     return DynamicModelFactory(
         client=real_client,

@@ -54,20 +54,14 @@ async def test_find_objects_by_class(
     )
     assert isinstance(objects, list)
     assert len(objects) >= 41, "Должно быть найдено не менее 41 объекта с родителем"
-    assert all(
-        isinstance(obj, NeoObject) for obj in objects
-    ), "Все элементы в списке должны быть объектами NeoObject"
+    assert all(isinstance(obj, NeoObject) for obj in objects), "Все элементы в списке должны быть объектами NeoObject"
     print(f"Найдено {len(objects)} объектов с родителем.")
 
     # 2. Поиск по классу без указания родителя
-    all_objects = await service.find_objects_by_class(
-        class_id=test_class_id_with_children
-    )
+    all_objects = await service.find_objects_by_class(class_id=test_class_id_with_children)
     assert isinstance(all_objects, list)
-    assert (
-        len(all_objects) >= 860
-    ), "Должно быть найдено не менее 860 объектов без указания родителя"
-    assert all(
-        isinstance(obj, NeoObject) for obj in all_objects
-    ), "Все элементы в списке должны быть объектами NeoObject"
+    assert len(all_objects) >= 860, "Должно быть найдено не менее 860 объектов без указания родителя"
+    assert all(isinstance(obj, NeoObject) for obj in all_objects), (
+        "Все элементы в списке должны быть объектами NeoObject"
+    )
     print(f"Найдено {len(all_objects)} объектов без родителя.")
