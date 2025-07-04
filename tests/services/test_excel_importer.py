@@ -61,6 +61,30 @@ INVALID_ATTRIBUTE_DATA = [
     {"Уровень": 1, "Класс": "Стройка", "Имя объекта": "Объект с ошибкой атрибута", "НесуществующийАтрибут": "значение"},
 ]
 
+BROKEN_HIERARCHY_DATA = [
+    # Уровень 1
+    {
+        "Уровень": 1,
+        "Класс": "Стройка",
+        "Имя объекта": "Родитель 1-го уровня",
+    },
+    # Прыжок на уровень 3
+    {
+        "Уровень": 3,
+        "Класс": "Стройка",
+        "Имя объекта": "Потомок 3-го уровня (осиротевший)",
+    },
+]
+
+MISSING_KEY_DATA = [
+    # Строка с корректными данными
+    {"Уровень": 1, "Класс": "Стройка", "Имя объекта": "Корректный объект"},
+    # Строка с пропущенным классом
+    {"Уровень": 2, "Класс": None, "Имя объекта": "Объект без класса"},
+    # Строка, которая не должна быть обработана
+    {"Уровень": 2, "Класс": "Стройка", "Имя объекта": "Этот объект не должен быть создан"},
+]
+
 
 @pytest.fixture(scope="module")
 def test_excel_file_path(tmp_path_factory) -> Path:
@@ -85,6 +109,24 @@ def invalid_attribute_excel_file_path(tmp_path_factory) -> Path:
     """Создает тестовый Excel-файл с ошибкой в имени атрибута."""
     path = tmp_path_factory.mktemp("data") / "invalid_attribute.xlsx"
     df = pd.DataFrame(INVALID_ATTRIBUTE_DATA)
+    df.to_excel(path, index=False)
+    return path
+
+
+@pytest.fixture(scope="module")
+def broken_hierarchy_excel_file_path(tmp_path_factory) -> Path:
+    """Создает тестовый Excel-файл с нарушенной иерархией."""
+    path = tmp_path_factory.mktemp("data") / "broken_hierarchy.xlsx"
+    df = pd.DataFrame(BROKEN_HIERARCHY_DATA)
+    df.to_excel(path, index=False)
+    return path
+
+
+@pytest.fixture(scope="module")
+def missing_key_data_excel_file_path(tmp_path_factory) -> Path:
+    """Создает тестовый Excel-файл со строкой, где отсутствуют ключевые данные."""
+    path = tmp_path_factory.mktemp("data") / "missing_key_data.xlsx"
+    df = pd.DataFrame(MISSING_KEY_DATA)
     df.to_excel(path, index=False)
     return path
 
@@ -185,6 +227,40 @@ class TestExcelImporter:
         assert len(preview.validation_errors) == 1
         assert "Атрибут 'НесуществующийАтрибут' не найден в классе 'Стройка'" in preview.validation_errors[0]
 
+    async def test_import_with_invalid_class(
+        self,
+        excel_importer: ExcelImporter,
+        invalid_class_excel_file_path: Path,
+    ):
+        """
+        Проверяет, что импорт прерывается, если найден несуществующий класс.
+        """
+        result = await excel_importer.import_from_excel(
+            excel_path=str(invalid_class_excel_file_path),
+            parent_id=settings.test_folder_id,
+        )
+
+        assert result.total_created == 0
+        assert len(result.errors) == 1
+        assert "Класс 'НесуществующийКласс' не найден" in result.errors[0]
+
+    async def test_import_with_invalid_attribute(
+        self,
+        excel_importer: ExcelImporter,
+        invalid_attribute_excel_file_path: Path,
+    ):
+        """
+        Проверяет, что импорт прерывается, если найден несуществующий атрибут.
+        """
+        result = await excel_importer.import_from_excel(
+            excel_path=str(invalid_attribute_excel_file_path),
+            parent_id=settings.test_folder_id,
+        )
+
+        assert result.total_created == 0
+        assert len(result.errors) == 1
+        assert "Атрибут 'НесуществующийАтрибут' не найден в классе 'Стройка'" in result.errors[0]
+
     async def test_import_and_attributes_verification(
         self,
         managed_import: ImportResult,
@@ -245,9 +321,7 @@ class TestExcelImporter:
         grandchild_id = id_map["Внучатый элемент-стройка"]
 
         # Используем object_service.read, чтобы получить модели с заполненными _parent_id
-        StroykaModel = (await dynamic_model_factory.create(
-            {"Класс": "Стройка", "Имя объекта": "fake"}
-        )).model_class
+        StroykaModel = (await dynamic_model_factory.create({"Класс": "Стройка", "Имя объекта": "fake"})).model_class
 
         # Объекты 1-го уровня
         project_obj = await object_service.read(project_id, StroykaModel)
@@ -256,7 +330,53 @@ class TestExcelImporter:
         # Объекты 2-го уровня
         child_obj = await object_service.read(child_id, StroykaModel)
         assert child_obj._parent_id == project_id
-        
+
         # Объекты 3-го уровня
         grandchild_obj = await object_service.read(grandchild_id, StroykaModel)
         assert grandchild_obj._parent_id == child_id
+
+    async def test_import_with_broken_hierarchy_is_an_error(
+        self,
+        excel_importer: ExcelImporter,
+        broken_hierarchy_excel_file_path: Path,
+    ):
+        """
+        Тестирует, что импорт файла с нарушенной иерархией прерывается
+        и возвращает ошибку.
+        """
+        result = await excel_importer.import_from_excel(
+            excel_path=str(broken_hierarchy_excel_file_path),
+            parent_id=settings.test_folder_id,
+        )
+
+        assert result.total_created == 0
+        assert len(result.errors) == 1
+        assert "Нарушена иерархия" in result.errors[0]
+        assert "уровня 3 не может следовать за уровнем 1" in result.errors[0]
+
+    async def test_import_with_missing_key_data_is_an_error(
+        self,
+        excel_importer: ExcelImporter,
+        object_service: ObjectService,
+        missing_key_data_excel_file_path: Path,
+    ):
+        """
+        Тестирует, что импорт прерывается, если в строке отсутствуют
+        ключевые данные (класс или имя).
+        """
+        result = await excel_importer.import_from_excel(
+            excel_path=str(missing_key_data_excel_file_path),
+            parent_id=settings.test_folder_id,
+        )
+
+        try:
+            # Объекты, созданные до ошибки, должны остаться.
+            # Новая логика - ошибка прерывает ВЕСЬ импорт.
+            assert result.total_created == 0
+            assert len(result.errors) == 1
+            assert "Отсутствуют обязательные данные" in result.errors[0]
+        finally:
+            # На случай, если логика отработает неверно и что-то создастся
+            if result.created_objects:
+                for obj in result.created_objects:
+                    await object_service.delete(obj["id"])

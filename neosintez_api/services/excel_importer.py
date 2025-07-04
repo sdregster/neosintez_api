@@ -196,14 +196,17 @@ class ExcelImporter:
         # Анализируем структуру
         structure = await self.analyze_structure(excel_path, worksheet_name)
 
-        # Загружаем данные
-        objects_to_create = await self._load_objects_sequentially(excel_path, structure, parent_id, worksheet_name)
+        # Загружаем данные и собираем ошибки загрузки
+        objects_to_create, loading_errors = await self._load_objects_sequentially(
+            excel_path, structure, parent_id, worksheet_name
+        )
 
         # Подсчитываем объекты
         estimated_objects = len(objects_to_create)
 
         # Проверяем валидность
         validation_errors = await self._validate_objects(objects_to_create)
+        validation_errors.extend(loading_errors)  # Добавляем ошибки, найденные при загрузке
 
         return ImportPreview(
             structure=structure,
@@ -397,13 +400,13 @@ class ExcelImporter:
         structure: ExcelStructure,
         parent_id: str,
         worksheet_name: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], List[str]]:
         """
         Загружает объекты из Excel и строит иерархическую структуру для импорта.
-        Возвращает плоский список объектов, готовых к валидации и созданию.
+        Возвращает плоский список объектов и список ошибок, найденных при загрузке.
         """
         if structure.total_rows == 0:
-            return []
+            return [], []
 
         # Загружаем данные
         try:
@@ -426,6 +429,7 @@ class ExcelImporter:
             raise NeosintezAPIError(message=f"Не удалось прочитать Excel файл: {e}", status_code=400) from e
 
         objects_to_create = []
+        errors = []
         parent_map: Dict[int, str] = {0: parent_id}  # level -> virtual_id
         virtual_id_counter = 0
 
@@ -436,12 +440,20 @@ class ExcelImporter:
 
             try:
                 level = int(row.iloc[structure.level_column])
-                class_name = str(row.iloc[structure.class_column])
-                name = str(row.iloc[structure.name_column])
 
-                # Пропускаем строки без класса или имени
-                if not class_name or not name or pd.isna(class_name) or pd.isna(name) or class_name.lower() == "nan":
+                class_name_raw = row.iloc[structure.class_column]
+                name_raw = row.iloc[structure.name_column]
+
+                # Проверяем строки без класса или имени. Это критическая ошибка.
+                if pd.isna(class_name_raw) or str(class_name_raw).strip().lower() in ("", "nan") or \
+                   pd.isna(name_raw) or str(name_raw).strip() == "":
+                    error_msg = f"Строка {index + 2}: Отсутствуют обязательные данные (Класс или Имя объекта)."
+                    logger.error(error_msg)
+                    errors.append(error_msg)
                     continue
+
+                class_name = str(class_name_raw)
+                name = str(name_raw)
 
                 # Создаем виртуальный ID для этого объекта
                 virtual_id_counter += 1
@@ -450,11 +462,16 @@ class ExcelImporter:
                 # Определяем родителя
                 current_parent_id = parent_map.get(level - 1)
                 if not current_parent_id:
-                    logger.warning(
-                        f"Строка {index + 2}: Не найден родитель для уровня {level}. "
-                        f"Объект '{name}' будет привязан к корневому объекту."
+                    # --- ИЗМЕНЕННАЯ ЛОГИКА ---
+                    # Вместо переназначения родителя, регистрируем как ошибку
+                    max_level_before_jump = max(parent_map.keys()) if parent_map else 0
+                    error_msg = (
+                        f"Строка {index + 2}: Нарушена иерархия. "
+                        f"Объект '{name}' уровня {level} не может следовать за уровнем {max_level_before_jump}."
                     )
-                    current_parent_id = parent_id
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    continue  # Пропускаем эту строку
 
                 # Собираем атрибуты
                 attributes = {}
@@ -483,7 +500,7 @@ class ExcelImporter:
                 logger.error(f"Ошибка парсинга строки {index + 2}: {e}", exc_info=True)
                 continue
 
-        return objects_to_create
+        return objects_to_create, errors
 
     async def _validate_objects(self, objects_to_create: List[Dict[str, Any]]) -> List[str]:
         """Проверяет объекты перед созданием, используя кешированный ClassService."""
