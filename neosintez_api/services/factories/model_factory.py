@@ -4,6 +4,7 @@
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
+import logging
 
 from pydantic import BaseModel, Field, create_model
 
@@ -50,10 +51,9 @@ def _create_pydantic_model(class_name: str, attributes_meta: Dict[str, Any]) -> 
     for attr_name, meta in attributes_meta.items():
         field_name = generate_field_name(attr_name)
 
-        # Если тип атрибута - ссылка (8), принудительно используем str.
-        # Это позволяет унифицировать обработку ссылок в ObjectService.
+        # Если тип атрибута - ссылка (8), то он может быть строкой или уже разрешенным словарем.
         if hasattr(meta, "Type") and meta.Type == 8:  # 8 = Ссылка на объект
-            python_type = str
+            python_type = Any
         else:
             python_type = neosintez_type_to_python_type(meta.Type if hasattr(meta, "Type") else None)
 
@@ -107,6 +107,7 @@ class DynamicModelFactory:
         self.class_name_aliases = [alias.lower() for alias in class_name_aliases]
         self.search_service = ObjectSearchService(self.client)
         self.resolver = AttributeResolver(self.client)
+        self.logger = logging.getLogger(__name__)
 
     def _find_and_extract(self, data: Dict[str, Any], aliases: List[str]) -> (str, Any):
         """Находит ключ по одному из алиасов, возвращает его и значение."""
@@ -189,9 +190,26 @@ class DynamicModelFactory:
         UnifiedObjectModel = _create_pydantic_model(class_name, attr_lookup)
         print(f"Создана единая Pydantic-модель: '{UnifiedObjectModel.__name__}'")
 
+        # 5. Разрешаем ссылочные атрибуты, если они переданы как строки
+        resolved_attribute_data = attribute_data.copy()
+        for attr_name, attr_value in attribute_data.items():
+            meta = attr_lookup.get(attr_name)
+            if meta and meta.Type == 8 and isinstance(attr_value, str):
+                try:
+                    resolved_value = await self.resolver.resolve_link_attribute_as_object(
+                        attr_meta=meta, attr_value=attr_value
+                    )
+                    resolved_attribute_data[attr_name] = resolved_value
+                except ValueError as e:
+                    self.logger.warning(
+                        f"Не удалось разрешить значение '{attr_value}' для ссылочного "
+                        f"атрибута '{meta.Name}'. Атрибут будет пропущен. Ошибка: {e}"
+                    )
+                    resolved_attribute_data[attr_name] = None
+
         # 7. Готовим данные для создания экземпляра модели.
-        # Используем исходные данные атрибутов (с "грязными" именами), так как они являются алиасами.
-        validation_data = attribute_data.copy()
+        # Используем данные с разрешенными ссылками.
+        validation_data = resolved_attribute_data
         # Имя объекта берется из специального поля, а не из атрибутов
         name_key, name_value = self._find_and_extract(user_data, self.name_aliases)
         if not name_value:

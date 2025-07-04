@@ -8,6 +8,7 @@ from neosintez_api import NeosintezClient
 from neosintez_api.models import NeosintezBaseModel
 from neosintez_api.services.object_service import ObjectService
 from neosintez_api.config import settings
+from neosintez_api.core.exceptions import NeosintezAPIError
 
 
 # 1. Определение тестовой декларативной модели
@@ -84,17 +85,19 @@ async def test_declarative_create_read_delete_cycle(object_service: ObjectServic
 
         # 7. Чтение после обновления
         reread_data = await object_service.read(created_object._id, StroykaTestModel)
-        assert reread_data.Name == updated_name
-
-        mvz_attr_meta = next((attr for attr in class_attrs if attr.Name == "МВЗ"), None)
-        assert mvz_attr_meta is not None
-        assert reread_data.Attributes.get(str(mvz_attr_meta.Id))["Value"] == "МВЗ_UPDATED"
+        assert reread_data.name == updated_name
+        assert reread_data.mvz == "МВЗ_UPDATED"
 
         # 8. Удаление объекта
         await object_service.delete(created_object._id)
+        object_to_delete_id = None  # Предотвращаем повторное удаление
 
     finally:
-        # 9. Очистка
+        # 9. Очистка на случай падения теста до шага удаления
         if object_to_delete_id:
-            await real_client.objects.delete(object_to_delete_id)
-            print(f"Тестовый объект {object_to_delete_id} удален.")
+            try:
+                await object_service.delete(object_to_delete_id)
+                print(f"Тестовый объект {object_to_delete_id} успешно удален.")
+            except NeosintezAPIError:
+                # Игнорируем ошибку, если объект уже был удален
+                pass
