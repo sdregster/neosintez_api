@@ -130,9 +130,12 @@ class ObjectService(Generic[T]):
                             setattr(model_for_api, field_name, resolved_obj)
                             logger.debug(f"Атрибут '{attr_meta.Name}' разрешен в объект: {resolved_obj}")
                         except ValueError as e:
-                            logger.error(f"Ошибка разрешения атрибута '{attr_meta.Name}': {e}")
-                            # TODO: Улучшить обработку ошибок, возможно, собирать их
-                            raise e
+                            logger.warning(
+                                f"Не удалось разрешить значение '{attr_value}' для ссылочного "
+                                f"атрибута '{attr_meta.Name}'. Атрибут будет пропущен. Ошибка: {e}"
+                            )
+                            # Пропускаем атрибут, не устанавливая его
+                            setattr(model_for_api, field_name, None)
 
             # В дальнейшем для создания будет использоваться model_for_api
             # Здесь мы временно передаем исходную модель, чтобы не ломать маппер
@@ -433,8 +436,12 @@ class ObjectService(Generic[T]):
                         )
                         setattr(model_for_api, field_name, resolved_obj)
                     except ValueError as e:
-                        logger.error(f"Ошибка разрешения атрибута '{attr_meta.Name}': {e}")
-                        raise e
+                        logger.warning(
+                            f"Не удалось разрешить значение '{attr_value}' для ссылочного "
+                            f"атрибута '{attr_meta.Name}'. Атрибут будет пропущен. Ошибка: {e}"
+                        )
+                        # Пропускаем атрибут, не устанавливая его
+                        setattr(model_for_api, field_name, None)
         return model_for_api
 
     async def _get_changed_attributes(
