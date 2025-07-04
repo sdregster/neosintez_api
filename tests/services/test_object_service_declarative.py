@@ -1,0 +1,93 @@
+import pytest
+import pytest_asyncio
+import uuid
+
+from pydantic import Field
+
+from neosintez_api import NeosintezClient
+from neosintez_api.models import NeosintezBaseModel
+from neosintez_api.services.object_service import ObjectService
+from neosintez_api.config import settings
+
+# 1. Определение тестовой декларативной модели
+class StroykaTestModel(NeosintezBaseModel):
+    """Тестовая модель для объекта 'Стройка'."""
+    class Neosintez:
+        class_name = "Стройка"
+
+    name: str = Field(..., description="Имя объекта")
+    mvz: str = Field(..., alias="МВЗ")
+    id_stroyki_adep: int = Field(..., alias="ID стройки Адепт")
+    ir_adep_primavera: str = Field(..., alias="ИР Адепт - Primavera")
+
+@pytest_asyncio.fixture
+async def object_service(real_client: NeosintezClient) -> ObjectService:
+    """Фикстура для создания ObjectService."""
+    return ObjectService(real_client)
+
+@pytest.mark.asyncio
+async def test_declarative_create_read_delete_cycle(object_service: ObjectService, real_client: NeosintezClient):
+    """
+    Тестирует полный цикл: создание, чтение и удаление объекта
+    с использованием декларативной модели.
+    """
+    object_to_delete_id = None
+    try:
+        # 2. Создание экземпляра модели с уникальным именем
+        unique_name = f"Тестовая стройка {uuid.uuid4()}"
+        stroyka_instance = StroykaTestModel(
+            name=unique_name,
+            mvz="МВЗ_FOR_TEST",
+            id_stroyki_adep=112233,
+            ir_adep_primavera="Да",
+        )
+
+        # 3. Создание объекта
+        created_object = await object_service.create(
+            stroyka_instance, parent_id=settings.test_folder_id
+        )
+        object_to_delete_id = created_object._id
+
+        # 4. Проверки после создания
+        assert created_object._id is not None
+        assert created_object.ir_adep_primavera == "Да"
+        assert created_object.name == unique_name
+        
+        # 5. Чтение после записи (Read-after-write)
+        # Получаем сырые данные напрямую из API, чтобы быть уверенными
+        raw_read_data = await real_client.objects.get_by_id(created_object._id)
+        
+        assert raw_read_data.Name == unique_name
+        
+        # Находим ID атрибута "ИР Адепт - Primavera"
+        class_meta = await object_service.class_service.find_by_name("Стройка")
+        class_attrs = await object_service.class_service.get_attributes(str(class_meta[0].Id))
+        link_attr_meta = next((attr for attr in class_attrs if attr.Name == "ИР Адепт - Primavera"), None)
+        assert link_attr_meta is not None
+        
+        # Проверяем, что значение ссылочного атрибута в API - это объект с именем "Да"
+        api_link_value = raw_read_data.Attributes.get(str(link_attr_meta.Id))
+        assert api_link_value is not None
+        assert api_link_value["Name"] == "Да"
+        
+        # 6. UPDATE
+        updated_name = f"Обновленная тестовая стройка {uuid.uuid4()}"
+        created_object.name = updated_name
+        created_object.mvz = "МВЗ_UPDATED"
+        
+        update_result = await object_service.update(created_object)
+        assert update_result is True
+
+        # 7. Проверка после обновления (Read-after-update)
+        reread_data = await real_client.objects.get_by_id(created_object._id)
+        assert reread_data.Name == updated_name
+        
+        mvz_attr_meta = next((attr for attr in class_attrs if attr.Name == "МВЗ"), None)
+        assert mvz_attr_meta is not None
+        assert reread_data.Attributes.get(str(mvz_attr_meta.Id))["Value"] == "МВЗ_UPDATED"
+
+    finally:
+        # 8. Очистка
+        if object_to_delete_id:
+            await real_client.objects.delete(object_to_delete_id)
+            print(f"Тестовый объект {object_to_delete_id} удален.") 

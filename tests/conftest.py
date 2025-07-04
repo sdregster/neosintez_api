@@ -12,6 +12,7 @@ from _pytest.fixtures import FixtureRequest
 from neosintez_api.config import NeosintezConfig
 from neosintez_api.core.client import NeosintezClient
 from neosintez_api.services.cache import TTLCache
+from neosintez_api.services.class_service import ClassService
 from neosintez_api.services.factories.model_factory import DynamicModelFactory
 from neosintez_api.services.object_service import ObjectService
 
@@ -41,16 +42,26 @@ async def real_client(real_settings: NeosintezConfig) -> NeosintezClient:
     await client.close()
 
 
-@pytest.fixture(scope="session")
-def dynamic_model_factory() -> DynamicModelFactory:
-    """Экземпляр фабрики моделей."""
+@pytest.fixture(scope="function")
+def class_service(real_client: NeosintezClient) -> ClassService:
+    """Экземпляр ClassService с настоящим клиентом."""
+    return ClassService(real_client)
+
+
+@pytest.fixture(scope="function")
+def dynamic_model_factory(
+    real_client: NeosintezClient, class_service: ClassService
+) -> DynamicModelFactory:
+    """Экземпляр фабрики моделей с реальным клиентом и сервисом классов."""
     return DynamicModelFactory(
+        client=real_client,
+        class_service=class_service,
         name_aliases=["Имя объекта", "Наименование", "Name"],
         class_name_aliases=["Класс", "Имя класса", "className"],
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def object_service(real_client: NeosintezClient) -> ObjectService:
     """Экземпляр ObjectService с настоящим клиентом."""
     return ObjectService(real_client)
