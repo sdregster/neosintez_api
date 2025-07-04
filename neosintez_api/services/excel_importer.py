@@ -3,6 +3,7 @@
 Автоматически определяет структуру Excel файла и создает объекты по уровням.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -252,6 +253,9 @@ class ExcelImporter:
                     duration_seconds=(datetime.now() - start_time).total_seconds(),
                 )
 
+            # ОПТИМИЗАЦИЯ: Предварительно загружаем метаданные всех классов
+            await self._preload_class_metadata(preview.objects_to_create)
+
             # Создаем объекты последовательно по уровням
             created_objects = []
             created_by_level: Dict[int, int] = {}
@@ -350,10 +354,19 @@ class ExcelImporter:
                 if not requests_to_process:
                     continue
 
-                # Пакетное создание объектов на текущем уровне
+                # ОПТИМИЗИРОВАННОЕ пакетное создание объектов на текущем уровне
                 try:
-                    # Используем корректный метод create_many
-                    creation_result = await self.object_service.create_many(requests_to_process)
+                    # Получаем адаптивные настройки производительности
+                    from neosintez_api.config import PerformanceSettings
+
+                    perf_settings = PerformanceSettings.get_optimized_settings(len(requests_to_process))
+
+                    # Используем максимально оптимизированную версию create_many_optimized
+                    creation_result = await self.object_service.create_many_optimized(
+                        requests_to_process,
+                        max_concurrent_create=perf_settings["max_concurrent_create"],
+                        max_concurrent_attrs=perf_settings["max_concurrent_attrs"],
+                    )
 
                     # Обрабатываем успешные результаты
                     succeeded_virtual_ids = set()
@@ -404,6 +417,20 @@ class ExcelImporter:
 
             duration = (datetime.now() - start_time).total_seconds()
             logger.info(f"Импорт завершен за {duration:.2f} сек.")
+
+            self._log_import_statistics(
+                ImportResult(
+                    total_created=len(created_objects),
+                    created_by_level=created_by_level,
+                    created_objects=created_objects,
+                    errors=errors,
+                    warnings=warnings,
+                    duration_seconds=duration,
+                ),
+                preview,
+                duration,
+                duration,  # Время импорта равно общему времени
+            )
 
             return ImportResult(
                 total_created=len(created_objects),
@@ -590,7 +617,8 @@ class ExcelImporter:
                 if not class_name:
                     continue  # Ошибка отсутствия класса уже обработана в _load_objects_sequentially
 
-                # Получаем атрибуты класса (с кэшированием внутри этого метода)
+                # ОПТИМИЗАЦИЯ: Используем предварительно загруженные метаданные из кэша
+                # Если метаданные не кэшированы, загружаем их (резервный путь)
                 if class_name not in self._class_attributes_cache:
                     try:
                         found_classes = await self.class_service.find_by_name(class_name)
@@ -684,3 +712,136 @@ class ExcelImporter:
 
         # Если тип не требует специальной конвертации, возвращаем как есть
         return value
+
+    async def _preload_class_metadata(self, objects_to_create: List[Dict[str, Any]]) -> None:
+        """
+        ОПТИМИЗАЦИЯ: Предварительно загружает и кэширует метаданные всех классов
+        из списка объектов для создания. Это исключает повторные запросы к API.
+
+        Args:
+            objects_to_create: Список объектов для создания
+        """
+        # Находим все уникальные классы
+        unique_classes = set()
+        for obj_data in objects_to_create:
+            class_name = obj_data.get("class_name")
+            if class_name and class_name not in self._class_attributes_cache:
+                unique_classes.add(class_name)
+
+        if not unique_classes:
+            logger.info("Все необходимые метаданные классов уже кэшированы")
+            return
+
+        logger.info(f"Предварительная загрузка метаданных для {len(unique_classes)} классов: {list(unique_classes)}")
+
+        # Загружаем метаданные для всех классов параллельно
+        async def load_class_metadata(class_name: str) -> tuple[str, Optional[Dict[str, Any]]]:
+            """Загружает метаданные для одного класса"""
+            try:
+                found_classes = await self.class_service.find_by_name(class_name)
+                # Ищем точное совпадение имени, нечувствительное к регистру
+                class_info = next((c for c in found_classes if c.Name.lower() == class_name.lower()), None)
+
+                if class_info:
+                    class_attributes = await self.class_service.get_attributes(str(class_info.Id))
+                    attributes_meta = {attr.Name: attr for attr in class_attributes}
+                    logger.debug(f"Загружены метаданные для класса '{class_name}': {len(attributes_meta)} атрибутов")
+                    return class_name, attributes_meta
+                else:
+                    logger.warning(f"Класс '{class_name}' не найден в системе")
+                    return class_name, None
+            except Exception as e:
+                logger.error(f"Ошибка загрузки метаданных для класса '{class_name}': {e}")
+                return class_name, None
+
+        # Запускаем загрузку всех классов параллельно
+        tasks = [load_class_metadata(class_name) for class_name in unique_classes]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Кэшируем результаты
+        for class_name, attributes_meta in results:
+            self._class_attributes_cache[class_name] = attributes_meta
+
+        loaded_count = sum(1 for _, meta in results if meta is not None)
+        logger.info(
+            f"Предварительная загрузка завершена: {loaded_count}/{len(unique_classes)} классов успешно загружены"
+        )
+
+    def _log_import_statistics(
+        self, result: "ImportResult", preview: "ImportPreview", total_time: float, import_time: float
+    ) -> None:
+        """
+        НОВОЕ: Логирует детальную статистику производительности импорта.
+
+        Args:
+            result: Результат импорта
+            preview: Предварительный просмотр
+            total_time: Общее время выполнения
+            import_time: Время импорта без preview
+        """
+        logger.info("=" * 80)
+        logger.info("📈 СТАТИСТИКА ОПТИМИЗИРОВАННОГО ИМПОРТА")
+        logger.info("=" * 80)
+
+        # Базовые метрики
+        logger.info(f"✅ Создано объектов: {result.total_created}")
+        logger.info(f"⏱️  Время импорта: {import_time:.2f} сек")
+        logger.info(f"⏱️  Общее время: {total_time:.2f} сек")
+
+        # Производительность
+        if result.total_created > 0:
+            avg_time = import_time / result.total_created
+            logger.info(f"📊 Среднее время на объект: {avg_time:.3f} сек")
+
+            # Сравнение с baseline (0.43 сек/объект до оптимизаций)
+            baseline_time = 0.43
+            improvement = ((baseline_time - avg_time) / baseline_time) * 100
+            speedup = baseline_time / avg_time
+
+            logger.info(f"🚀 Улучшение производительности: {improvement:.1f}%")
+            logger.info(f"🎯 Ускорение в {speedup:.1f}x раз")
+
+            # Оценка пропускной способности
+            throughput = 3600 / avg_time  # объектов в час
+            logger.info(f"📈 Пропускная способность: {throughput:.0f} объектов/час")
+
+        # Детализация по уровням
+        logger.info("\n📊 Объектов по уровням:")
+        for level, count in sorted(result.created_by_level.items()):
+            logger.info(f"   - Уровень {level}: {count} объектов")
+
+        # Использование оптимизаций
+        logger.info("\n🚀 Использованные оптимизации:")
+        logger.info("   ✅ Предварительное кэширование метаданных классов")
+        logger.info("   ✅ Параллельное создание объектов одного уровня")
+        logger.info("   ✅ Batch установка атрибутов")
+        logger.info("   ✅ Ограничение concurrent соединений")
+
+        # Качество данных
+        total_warnings = len(result.warnings)
+        total_errors = len(result.errors)
+
+        if total_warnings > 0:
+            logger.info(f"\n⚠️  Предупреждения: {total_warnings}")
+            # Показываем только первые 3 для краткости в логах
+            for warning in result.warnings[:3]:
+                logger.info(f"   - {warning}")
+            if total_warnings > 3:
+                logger.info(f"   ... и ещё {total_warnings - 3}")
+
+        if total_errors > 0:
+            logger.info(f"\n❌ Ошибки: {total_errors}")
+            for error in result.errors[:3]:
+                logger.info(f"   - {error}")
+            if total_errors > 3:
+                logger.info(f"   ... и ещё {total_errors - 3}")
+
+        # Рекомендации по дальнейшей оптимизации (только если объекты создавались)
+        if result.total_created > 0:
+            avg_time = import_time / result.total_created
+            if avg_time > 0.15:  # Если всё ещё медленно
+                logger.info("\n💡 Рекомендации для дальнейшей оптимизации:")
+                logger.info("   - Увеличить max_concurrent для небольших объектов")
+                logger.info("   - Рассмотреть batch API endpoints в будущих версиях Neosintez")
+
+        logger.info("=" * 80)

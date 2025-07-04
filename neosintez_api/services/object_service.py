@@ -197,39 +197,195 @@ class ObjectService(Generic[T]):
             logger.error(f"Ошибка API при создании объекта '{object_name}': {e}")
             raise
 
+    async def create_many_optimized(
+        self,
+        requests: List[CreateRequest[T]],
+        max_concurrent_create: int = 5,
+        max_concurrent_attrs: int = 10,
+    ) -> BulkCreateResult[T]:
+        """
+        МАКСИМАЛЬНО ОПТИМИЗИРОВАННОЕ массовое создание объектов.
+
+        Использует двухэтапный процесс:
+        1. Параллельное создание объектов (без атрибутов)
+        2. Batch установка атрибутов для всех созданных объектов
+
+        Args:
+            requests: Список запросов на создание
+            max_concurrent_create: Максимум параллельных запросов создания объектов
+            max_concurrent_attrs: Максимум параллельных запросов установки атрибутов
+
+        Returns:
+            BulkCreateResult: Результат с созданными моделями и ошибками
+        """
+        logger.info(f"Начало МАКСИМАЛЬНО ОПТИМИЗИРОВАННОГО создания {len(requests)} объектов")
+        result = BulkCreateResult[T]()
+
+        # Этап 1: Создание объектов без атрибутов (параллельно)
+        create_semaphore = asyncio.Semaphore(max_concurrent_create)
+        created_objects_data = []
+
+        async def create_object_only(request: CreateRequest[T]) -> Optional[Dict[str, Any]]:
+            """Создает объект без атрибутов"""
+            async with create_semaphore:
+                try:
+                    object_name = request.model.name
+                    logger.debug(f"Создание объекта '{object_name}' класса '{request.class_name}'")
+
+                    # Создаем объект в API без атрибутов
+                    object_data = {
+                        "Name": object_name,
+                        "Entity": {"Id": request.class_id, "Name": request.class_name},
+                    }
+                    response = await self.client.objects.create(object_data, parent_id=request.parent_id)
+                    object_id = response.get("Id")
+
+                    if not object_id:
+                        raise NeosintezAPIError("Не удалось получить ID созданного объекта")
+
+                    logger.debug(f"Объект '{object_name}' создан с ID: {object_id}")
+
+                    # Подготавливаем атрибуты для batch установки
+                    attr_meta_by_name = {
+                        (a["Name"] if isinstance(a, dict) else a.Name): (a if isinstance(a, dict) else a.model_dump())
+                        for a in request.attributes_meta.values()
+                    }
+
+                    attributes_list = await self.mapper.model_to_attributes(request.model, attr_meta_by_name)
+
+                    return {
+                        "object_id": object_id,
+                        "attributes": attributes_list,
+                        "model": request.model,
+                        "class_id": request.class_id,
+                        "parent_id": request.parent_id,
+                    }
+
+                except Exception as e:
+                    error_msg = f"Ошибка при создании объекта '{request.model.name}': {e}"
+                    logger.error(error_msg, exc_info=True)
+                    result.errors.append(error_msg)
+                    return None
+
+        # Запускаем создание всех объектов параллельно
+        logger.info(f"Этап 1: Создание {len(requests)} объектов параллельно...")
+        create_tasks = [create_object_only(request) for request in requests]
+        create_results = await asyncio.gather(*create_tasks, return_exceptions=False)
+
+        # Собираем успешно созданные объекты
+        for obj_data in create_results:
+            if obj_data is not None:
+                created_objects_data.append(obj_data)
+
+        logger.info(f"Этап 1 завершен: {len(created_objects_data)} объектов создано")
+
+        # Этап 2: Batch установка атрибутов
+        if created_objects_data:
+            logger.info(f"Этап 2: Batch установка атрибутов для {len(created_objects_data)} объектов...")
+
+            # Подготавливаем данные для batch установки атрибутов
+            objects_attributes = []
+            for obj_data in created_objects_data:
+                if obj_data["attributes"]:  # Только если есть атрибуты
+                    objects_attributes.append(
+                        {"object_id": obj_data["object_id"], "attributes": obj_data["attributes"]}
+                    )
+
+            if objects_attributes:
+                # Batch установка атрибутов
+                attr_errors = await self.client.objects.set_attributes_batch(objects_attributes, max_concurrent_attrs)
+                result.errors.extend(attr_errors)
+
+                logger.info(
+                    f"Этап 2 завершен: атрибуты установлены для {len(objects_attributes) - len(attr_errors)} объектов"
+                )
+
+        # Этап 3: Формирование результата
+        for obj_data in created_objects_data:
+            model = obj_data["model"]
+            object_id = obj_data["object_id"]
+
+            # Обновляем модель с полученным ID
+            from neosintez_api.models import NeosintezBaseModel
+
+            if isinstance(model, NeosintezBaseModel):
+                model._id = object_id
+                model._class_id = obj_data["class_id"]
+                model._parent_id = str(obj_data["parent_id"]) if obj_data["parent_id"] else None
+            else:
+                model.id = object_id
+                model.class_id = obj_data["class_id"]
+                model.parent_id = str(obj_data["parent_id"]) if obj_data["parent_id"] else None
+
+            result.created_models.append(model)
+
+        logger.info(
+            f"МАКСИМАЛЬНО ОПТИМИЗИРОВАННОЕ создание завершено. Успешно: {len(result.created_models)}, Ошибок: {len(result.errors)}"
+        )
+        return result
+
     async def create_many(
         self,
         requests: List[CreateRequest[T]],
+        max_concurrent: int = 5,  # Ограничение на количество параллельных запросов
     ) -> BulkCreateResult[T]:
         """
-        Массовое создание объектов из списка запросов.
+        СТАНДАРТНОЕ массовое создание объектов из списка запросов.
+
+        Использует параллельную обработку с ограничением количества
+        одновременных соединений для оптимизации производительности.
+
+        Для максимальной производительности используйте create_many_optimized().
 
         Args:
             requests: Список запросов на создание, каждый из которых
                       содержит модель и метаданные.
+            max_concurrent: Максимальное количество параллельных запросов (по умолчанию 5)
 
         Returns:
             BulkCreateResult: Результат с созданными моделями и ошибками.
         """
-        logger.info(f"Начало массового создания {len(requests)} объектов.")
+        logger.info(
+            f"Начало стандартного массового создания {len(requests)} объектов с ограничением {max_concurrent} concurrent соединений."
+        )
         result = BulkCreateResult[T]()
 
-        for request in requests:
-            try:
-                created_model = await self.create(
-                    model=request.model,
-                    class_id=request.class_id,
-                    class_name=request.class_name,
-                    attributes_meta=request.attributes_meta,
-                    parent_id=request.parent_id,
-                )
-                result.created_models.append(created_model)
-            except Exception as e:
-                error_msg = f"Ошибка при создании объекта '{request.model.name}': {e}"
-                logger.error(error_msg, exc_info=True)
-                result.errors.append(error_msg)
+        # Создаем семафор для ограничения количества параллельных запросов
+        semaphore = asyncio.Semaphore(max_concurrent)
 
-        logger.info(f"Массовое создание завершено. Успешно: {len(result.created_models)}, Ошибок: {len(result.errors)}")
+        async def create_single_with_semaphore(request: CreateRequest[T]) -> Optional[T]:
+            """Создает один объект с использованием семафора"""
+            async with semaphore:
+                try:
+                    created_model = await self.create(
+                        model=request.model,
+                        class_id=request.class_id,
+                        class_name=request.class_name,
+                        attributes_meta=request.attributes_meta,
+                        parent_id=request.parent_id,
+                    )
+                    return created_model
+                except Exception as e:
+                    error_msg = f"Ошибка при создании объекта '{request.model.name}': {e}"
+                    logger.error(error_msg, exc_info=True)
+                    result.errors.append(error_msg)
+                    return None
+
+        # Запускаем все задачи параллельно
+        logger.info(f"Запуск {len(requests)} задач создания объектов параллельно...")
+        tasks = [create_single_with_semaphore(request) for request in requests]
+
+        # Ожидаем завершения всех задач
+        completed_models = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Собираем успешно созданные модели
+        for model in completed_models:
+            if model is not None:
+                result.created_models.append(model)
+
+        logger.info(
+            f"Стандартное массовое создание завершено. Успешно: {len(result.created_models)}, Ошибок: {len(result.errors)}"
+        )
         return result
 
     async def read(self, object_id: Union[str, UUID], model_class: Type[T]) -> T:

@@ -462,3 +462,52 @@ class ObjectsResource(BaseResource):
         """Удаляет объект."""
         endpoint = f"api/objects/{object_id}"
         await self._request("DELETE", endpoint)
+
+    async def set_attributes_batch(
+        self,
+        objects_attributes: List[Dict[str, Any]],
+        max_concurrent: int = 10,
+    ) -> List[str]:
+        """
+        ОПТИМИЗАЦИЯ: Массовая установка атрибутов для множественных объектов параллельно.
+
+        Args:
+            objects_attributes: Список словарей с парами object_id и attributes
+                                Формат: [{"object_id": "uuid", "attributes": [...]}, ...]
+            max_concurrent: Максимальное количество параллельных запросов
+
+        Returns:
+            List[str]: Список ошибок (пустой список если все успешно)
+        """
+        logger.info(
+            f"Массовая установка атрибутов для {len(objects_attributes)} объектов с ограничением {max_concurrent} concurrent"
+        )
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+        errors = []
+
+        async def set_attributes_single(obj_attrs: Dict[str, Any]) -> Optional[str]:
+            """Устанавливает атрибуты для одного объекта с семафором"""
+            async with semaphore:
+                try:
+                    object_id = obj_attrs["object_id"]
+                    attributes = obj_attrs["attributes"]
+                    await self.set_attributes(object_id, attributes)
+                    logger.debug(f"Атрибуты установлены для объекта {object_id}")
+                    return None
+                except Exception as e:
+                    error_msg = f"Ошибка установки атрибутов для объекта {obj_attrs.get('object_id', 'unknown')}: {e}"
+                    logger.error(error_msg)
+                    return error_msg
+
+        # Запускаем все задачи параллельно
+        tasks = [set_attributes_single(obj_attrs) for obj_attrs in objects_attributes]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Собираем ошибки
+        errors = [error for error in results if error is not None]
+
+        success_count = len(objects_attributes) - len(errors)
+        logger.info(f"Массовая установка атрибутов завершена: {success_count}/{len(objects_attributes)} успешно")
+
+        return errors

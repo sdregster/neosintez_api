@@ -58,4 +58,55 @@ class NeosintezConfig(BaseSettings):
     )
 
 
+class PerformanceSettings:
+    """НОВЫЕ настройки производительности для оптимизированного импорта"""
+
+    # Настройки параллельности создания объектов
+    MAX_CONCURRENT_OBJECT_CREATION = 3  # Консервативное значение для стабильности
+
+    # Настройки параллельности установки атрибутов
+    MAX_CONCURRENT_ATTRIBUTE_SETTING = 8  # Больше для batch операций
+
+    # Настройки кэширования
+    ENABLE_CLASS_METADATA_CACHING = True
+    CLASS_CACHE_SIZE = 100  # Максимум классов в кэше
+
+    # Настройки мониторинга
+    LOG_PERFORMANCE_STATS = True
+    PERFORMANCE_BASELINE_TIME = 0.43  # Секунд на объект до оптимизаций
+
+    # Пороги для рекомендаций
+    SLOW_OBJECT_CREATION_THRESHOLD = 0.15  # Секунд на объект
+
+    @classmethod
+    def get_optimized_settings(cls, object_count: int) -> dict:
+        """
+        Возвращает оптимизированные настройки на основе количества объектов.
+
+        Args:
+            object_count: Количество объектов для создания
+
+        Returns:
+            dict: Словарь с настройками производительности
+        """
+        if object_count < 100:
+            # Для небольших импортов увеличиваем параллельность
+            return {
+                "max_concurrent_create": 5,
+                "max_concurrent_attrs": 10,
+            }
+        elif object_count < 500:
+            # Средние импорты - балансируем нагрузку
+            return {
+                "max_concurrent_create": 3,
+                "max_concurrent_attrs": 8,
+            }
+        else:
+            # Большие импорты - осторожно с нагрузкой на сервер
+            return {
+                "max_concurrent_create": 2,
+                "max_concurrent_attrs": 6,
+            }
+
+
 settings = NeosintezConfig()
