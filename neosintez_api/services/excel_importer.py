@@ -541,63 +541,91 @@ class ExcelImporter:
         Проверяет объекты перед созданием, используя кешированный ClassService.
         Возвращает кортеж (критические_ошибки, предупреждения).
         """
-        errors = []
-        warnings = []
-        if not objects_to_create:
-            return errors, warnings
+        warnings: List[str] = []
+        errors: List[str] = []
 
         try:
-            # Убедимся, что кэш классов и атрибутов в ClassService загружен
-            await self.class_service._ensure_cache_loaded()
+            # Проверяем иерархию
+            last_level = 0
+            for i, obj_data in enumerate(objects_to_create):
+                level = obj_data.get("level")
+                if level is None:
+                    errors.append(f"В строке {i+2} отсутствует значение уровня.")
+                    continue
 
-            # Создаем словарь {имя_класса: класс} для быстрой проверки
-            all_classes = await self.class_service.get_all()
-            class_name_map = {cls.Name.lower(): cls for cls in all_classes}
-
-            # 1. Проверить существование всех классов (критическая ошибка)
-            class_names_from_file = {obj["class_name"].lower() for obj in objects_to_create if "class_name" in obj}
-
-            for name in class_names_from_file:
-                if name not in class_name_map:
-                    original_name = next(
-                        (obj["class_name"] for obj in objects_to_create if obj["class_name"].lower() == name), name
+                if level > last_level + 1:
+                    error_msg = (
+                        f"Нарушена иерархия в строке {i+2}: "
+                        f"уровня {level} не может следовать за уровнем {last_level}. "
+                        "Пропущен один или несколько уровней."
                     )
-                    errors.append(f"Класс '{original_name}' не найден в Неосинтезе.")
+                    errors.append(error_msg)
+                    # Прерываем дальнейшую проверку, так как иерархия уже нарушена
+                    return errors, warnings
+                last_level = level
 
-            if errors:
-                # Если есть ошибки с классами, нет смысла проверять атрибуты
-                return errors, warnings
-
-            # 2. Проверить атрибуты для каждого объекта (предупреждение)
-            unique_warnings = set()
-            for obj in objects_to_create:
-                class_name = obj.get("class_name")
+            # Проверяем атрибуты
+            class_attributes_cache = {}
+            for obj_data in objects_to_create:
+                class_name = obj_data.get("class_name")
                 if not class_name:
+                    continue  # Ошибка отсутствия класса уже обработана в _load_objects_sequentially
+
+                # Получаем атрибуты класса (с кэшированием внутри этого метода)
+                if class_name not in class_attributes_cache:
+                    try:
+                        found_classes = await self.class_service.find_by_name(class_name)
+                        # Ищем точное совпадение имени, нечувствительное к регистру
+                        class_info = next((c for c in found_classes if c.Name.lower() == class_name.lower()), None)
+
+                        if class_info:
+                            class_attributes = await self.class_service.get_attributes(str(class_info.Id))
+                            class_attributes_cache[class_name] = {attr.Name: attr for attr in class_attributes}
+                        else:
+                            class_attributes_cache[class_name] = None
+                    except Exception as e:
+                        logger.warning(f"Не удалось получить атрибуты для класса '{class_name}': {e}")
+                        class_attributes_cache[class_name] = None
+                        continue
+
+                attributes_meta = class_attributes_cache[class_name]
+                if not attributes_meta:
+                    if f"Класс '{class_name}' не найден в системе." not in errors:
+                        errors.append(f"Класс '{class_name}' не найден в системе.")
                     continue
 
-                class_info = class_name_map.get(class_name.lower())
-                if not class_info:
-                    # Ошибка уже добавлена выше
-                    continue
+                # Проверяем, что все атрибуты из файла существуют в классе
+                for attr_name in obj_data.get("attributes", {}):
+                    if attr_name not in attributes_meta:
+                        warning_msg = (
+                            f"Атрибут '{attr_name}' не найден в классе '{class_name}' и будет проигнорирован."
+                        )
+                        if warning_msg not in warnings:
+                            warnings.append(warning_msg)
+                    else:
+                        # Проверяем, не является ли атрибут файловым
+                        attr_meta = attributes_meta[attr_name]
+                        # Используем getattr для безопасного доступа к Type, т.к. он может отсутствовать
+                        attr_type = getattr(attr_meta, "Type", None)
+                        # В метаданных из API тип может быть как int, так и объектом AttributeType
+                        if isinstance(attr_type, BaseModel) and hasattr(attr_type, "Id"):
+                            attr_type_id = attr_type.Id
+                        else:
+                            attr_type_id = attr_type
 
-                # Получаем атрибуты из кэша ClassService
-                class_attributes = await self.class_service.get_attributes(str(class_info.Id))
-                class_attribute_names = {attr.Name.lower() for attr in class_attributes}
-
-                for attr_name in obj.get("attributes", {}):
-                    if attr_name.lower() not in class_attribute_names:
-                        # Собираем уникальные пары (класс, атрибут) для группировки
-                        unique_warnings.add((class_name, attr_name))
-
-            # Форматируем сгруппированные предупреждения
-            for class_name, attr_name in sorted(list(unique_warnings)):
-                warnings.append(f"Атрибут '{attr_name}' не найден в классе '{class_name}'.")
+                        if attr_type_id == 7:  # WioAttributeType.FILE.value
+                            warning_msg = (
+                                f"Атрибут '{attr_name}' в классе '{class_name}' является файловым и будет пропущен. "
+                                "Загрузка файлов пока не поддерживается."
+                            )
+                            if warning_msg not in warnings:
+                                warnings.append(warning_msg)
 
         except NeosintezAPIError as e:
             logger.error(f"Произошла ошибка API при валидации: {e}", exc_info=True)
-            errors.append(f"Ошибка API при проверке данных: {e}")
+            errors.append(f"Ошибка API при валидации: {e.detail or e.message}")
         except Exception as e:
-            logger.error(f"Произошла непредвиденная ошибка при валидации: {e}", exc_info=True)
-            errors.append(f"Непредвиденная ошибка при проверке данных: {e}")
+            logger.error(f"Непредвиденная ошибка при валидации: {e}", exc_info=True)
+            errors.append(f"Непредвиденная ошибка при валидации: {e}")
 
         return errors, warnings

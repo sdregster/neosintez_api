@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel
 
+from ...core.enums import WioAttributeType
 from ...utils import build_attribute_body
 
 
@@ -48,6 +49,16 @@ class ObjectMapper:
 
             if alias in attr_meta_by_name:
                 attr_meta = attr_meta_by_name[alias]
+                
+                # Проверяем тип атрибута. Временно пропускаем файловые атрибуты.
+                attr_type_val = attr_meta.get("Type")
+                if attr_type_val is not None and attr_type_val == WioAttributeType.FILE:
+                    logger.warning(
+                        f"Атрибут '{alias}' (поле: {field_name}) является файловым и будет пропущен. "
+                        "Загрузка файлов пока не поддерживается."
+                    )
+                    continue
+                
                 # Получаем значение поля из модели
                 value = getattr(model, field_name)
 

@@ -110,6 +110,16 @@ RUNTIME_FAILURE_HIERARCHY_DATA = [
     },
 ]
 
+FILE_ATTRIBUTE_DATA = [
+    {
+        "Уровень": 1,
+        "Класс": "Акт КС-2",
+        "Имя объекта": "Тестовый акт с файлом",
+        "Файл": "some_file.xlsx",
+        "Номер сметы": "СМ-01",
+    }
+]
+
 
 @pytest.fixture(scope="module")
 def test_excel_file_path(tmp_path_factory) -> Path:
@@ -170,6 +180,15 @@ def runtime_failure_excel_file_path(tmp_path_factory) -> Path:
     """Создает тестовый Excel-файл, который вызовет ошибку во время выполнения."""
     path = tmp_path_factory.mktemp("data") / "runtime_failure.xlsx"
     df = pd.DataFrame(RUNTIME_FAILURE_HIERARCHY_DATA)
+    df.to_excel(path, index=False)
+    return path
+
+
+@pytest.fixture(scope="module")
+def file_attribute_excel_path(tmp_path_factory) -> Path:
+    """Создает тестовый Excel-файл с атрибутом типа 'Файл'."""
+    path = tmp_path_factory.mktemp("data") / "file_attribute.xlsx"
+    df = pd.DataFrame(FILE_ATTRIBUTE_DATA)
     df.to_excel(path, index=False)
     return path
 
@@ -496,6 +515,36 @@ class TestExcelImporter:
 
         finally:
             # На случай, если что-то все-таки создалось вопреки логике
+            if created_ids:
+                for obj_id in created_ids:
+                    await object_service.delete(obj_id)
+
+    async def test_import_with_file_attribute_skips_it_with_warning(
+        self,
+        excel_importer: ExcelImporter,
+        file_attribute_excel_path: Path,
+        object_service: ObjectService,
+    ):
+        """
+        Проверяет, что при импорте атрибут типа 'Файл' пропускается,
+        но для пользователя выводится предупреждение.
+        """
+        result = await excel_importer.import_from_excel(
+            excel_path=str(file_attribute_excel_path),
+            parent_id=settings.test_folder_id,
+        )
+
+        created_ids = [obj["id"] for obj in result.created_objects]
+        try:
+            assert result.total_created == 1, "Должен быть создан один объект"
+            assert not result.errors, "Не должно быть ошибок при импорте"
+
+            assert len(result.warnings) == 1, "Должно быть одно предупреждение о пропуске файлового атрибута"
+            warning_text = result.warnings[0]
+            assert "является файловым и будет пропущен" in warning_text
+            assert "Атрибут 'Файл'" in warning_text
+
+        finally:
             if created_ids:
                 for obj_id in created_ids:
                     await object_service.delete(obj_id)
