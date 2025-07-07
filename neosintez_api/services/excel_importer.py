@@ -18,6 +18,7 @@ from ..core.enums import WioAttributeType
 from .class_service import ClassService
 from .factories import DynamicModelFactory
 from .object_service import CreateRequest, ObjectService
+from .resolvers import AttributeResolver
 
 
 logger = logging.getLogger("neosintez_api.excel_importer")
@@ -84,6 +85,7 @@ class ExcelImporter:
             class_name_aliases=self.CLASS_COLUMN_NAMES,
         )
         self._class_attributes_cache: Dict[str, Dict[str, Any]] = {}
+        self.resolver = AttributeResolver(client)
 
     async def analyze_structure(self, excel_path: str, worksheet_name: Optional[str] = None) -> ExcelStructure:
         """
@@ -253,8 +255,9 @@ class ExcelImporter:
                     duration_seconds=(datetime.now() - start_time).total_seconds(),
                 )
 
-            # ОПТИМИЗАЦИЯ: Предварительно загружаем метаданные всех классов
-            await self._preload_class_metadata(preview.objects_to_create)
+            # ОПТИМИЗАЦИЯ: Предварительно загружаем метаданные всех классов, если кэш еще пуст
+            if not self._class_attributes_cache:
+                await self._preload_class_metadata(preview.objects_to_create)
 
             # Создаем объекты последовательно по уровням
             created_objects = []
@@ -282,7 +285,46 @@ class ExcelImporter:
                 requests_to_process = []
                 batch_virtual_ids = set()
 
-                for obj_data in objects_by_level[level]:
+                # --- [НАЧАЛО] ОПТИМИЗАЦИЯ: Групповой резолв ссылок ---
+                pending_links: dict[tuple[str, str | None, str], list[tuple[int, str]]] = {}
+                objects_data_for_level = objects_by_level[level]
+
+                # Шаг 1: Собрать все ссылочные атрибуты для этого уровня
+                for i, obj_data in enumerate(objects_data_for_level):
+                    class_name = obj_data["class_name"]
+                    attributes_meta = self._class_attributes_cache.get(class_name)
+                    if attributes_meta:
+                        for attr_name, value in obj_data.get("attributes", {}).items():
+                            attr_meta = attributes_meta.get(attr_name)
+                            if (
+                                attr_meta
+                                and hasattr(attr_meta, "Type")
+                                and isinstance(getattr(attr_meta.Type, "Id", None), int)
+                                and attr_meta.Type.Id == WioAttributeType.REFERENCE.value
+                                and isinstance(value, str)
+                            ):
+                                linked_class_id = str(attr_meta.LinkedClassId)
+                                if linked_class_id:
+                                    key = (linked_class_id, attr_meta.ObjectRootId, value)
+                                    pending_links.setdefault(key, []).append((i, attr_name))
+
+                # Шаг 2: Пакетно разрешить все уникальные ссылки
+                resolved_links = {}
+                for key, refs in pending_links.items():
+                    linked_class_id, root_id, value_str = key
+                    try:
+                        first_obj_idx, first_attr_name = refs[0]
+                        attr_meta = self._class_attributes_cache[objects_data_for_level[first_obj_idx]["class_name"]][
+                            first_attr_name
+                        ]
+                        resolved_links[key] = await self.resolver.resolve_link_attribute_as_object(attr_meta, value_str)
+                    except (ValueError, NeosintezAPIError) as e:
+                        err_msg = f"Ошибка разрешения ссылки для значения '{value_str}': {e}"
+                        logger.error(err_msg)
+                        errors.append(err_msg)
+                # --- [КОНЕЦ] ОПТИМИЗАЦИЯ ---
+
+                for obj_data in objects_data_for_level:
                     virtual_id = obj_data["virtual_id"]
                     virtual_parent_id = obj_data["parent_id"]
 
@@ -312,9 +354,32 @@ class ExcelImporter:
 
                     if attributes_meta:
                         for attr_name, value in obj_data["attributes"].items():
-                            converted_attributes[attr_name] = self._convert_attribute_value(
-                                value, attr_name, attributes_meta
-                            )
+                            # --- [НАЧАЛО] ОПТИМИЗАЦИЯ: Подстановка разрешенных ссылок ---
+                            attr_meta = attributes_meta.get(attr_name)
+                            if (
+                                attr_meta
+                                and hasattr(attr_meta, "Type")
+                                and isinstance(getattr(attr_meta.Type, "Id", None), int)
+                                and attr_meta.Type.Id == WioAttributeType.REFERENCE.value
+                                and isinstance(value, str)
+                            ):
+                                linked_class_id = str(attr_meta.LinkedClassId)
+                                if linked_class_id:
+                                    key = (linked_class_id, attr_meta.ObjectRootId, value)
+                                    if key in resolved_links:
+                                        converted_attributes[attr_name] = resolved_links[key]
+                                    else:
+                                        # Если ссылка не разрешилась (была ошибка), оставляем как есть
+                                        converted_attributes[attr_name] = value
+                                else:
+                                    converted_attributes[attr_name] = self._convert_attribute_value(
+                                        value, attr_name, attributes_meta
+                                    )
+                            else:
+                                converted_attributes[attr_name] = self._convert_attribute_value(
+                                    value, attr_name, attributes_meta
+                                )
+                            # --- [КОНЕЦ] ОПТИМИЗАЦИЯ ---
                     else:
                         # Если метаданные не найдены, используем исходные атрибуты
                         converted_attributes = obj_data["attributes"]
@@ -845,3 +910,57 @@ class ExcelImporter:
                 logger.info("   - Рассмотреть batch API endpoints в будущих версиях Neosintez")
 
         logger.info("=" * 80)
+
+    def _convert_rows_to_objects(
+        self,
+        rows: list[dict],
+        structure: ExcelStructure,
+        parent_map: dict[int, str],
+        start_row_index: int,
+    ) -> list[dict]:
+        """Преобразует строки из Excel в список словарей для создания объектов."""
+        objects_to_create = []
+        for i, row in enumerate(rows):
+            class_name = row.get(structure.class_column)
+            if not class_name:
+                continue
+
+            class_id = self.class_service.get_class_id_by_name(class_name)
+            if not class_id:
+                logger.warning(f"Строка {start_row_index + i}: Класс '{class_name}' не найден, строка пропущена.")
+                continue
+
+            # ОПТИМИЗАЦИЯ: Получаем метаданные из кэша, который был заполнен ранее.
+            attributes_meta = self._class_attributes_cache.get(class_id)
+            if not attributes_meta:
+                logger.error(
+                    f"Критическая ошибка: Метаданные для класса '{class_name}' (ID: {class_id}) "
+                    f"не были предварительно загружены. Строка {start_row_index + i} будет пропущена."
+                )
+                continue
+
+            obj_attributes = {}
+            for col_index, attr_name in structure.attribute_columns.items():
+                if attr_name in row and pd.notna(row[attr_name]):
+                    # Ищем метаданные атрибута в уже загруженных данных класса
+                    attr_meta = attributes_meta.get(attr_name)
+                    if attr_meta:
+                        value = self._convert_attribute_value(attr_meta, row[attr_name], row_index=start_row_index + i)
+                        obj_attributes[attr_meta["Name"]] = value
+                    else:
+                        logger.warning(
+                            f"Строка {start_row_index + i}: Атрибут '{attr_name}' не найден в классе '{class_name}'"
+                        )
+
+            # Собираем базовую информацию об объекте
+            object_data = {
+                "name": row.get(structure.name_column),
+                "class_name": class_name,
+                "class_id": class_id,
+                "parent_id": parent_map.get(row[structure.level_column]),
+                "attributes": obj_attributes,
+                "source_row": start_row_index + i,
+            }
+            objects_to_create.append(object_data)
+
+        return objects_to_create

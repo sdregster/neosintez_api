@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 
+from neosintez_api.config import settings
 from neosintez_api.core.client import NeosintezClient
 from neosintez_api.services.excel_importer import ExcelImporter
 
@@ -12,7 +13,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 # EXCEL_FILE_PATH = "data/hierarchical_import_example.xlsx"
 EXCEL_FILE_PATH = "data/Neosintez_Template_06-13 Сети канализации (смета к договору).xlsx"
-# PARENT_OBJECT_ID = settings.test_folder_id
+# EXCEL_FILE_PATH = "data/huge_file.xlsx"
+PARENT_OBJECT_ID = settings.test_folder_id
 PARENT_OBJECT_ID = "001847f9-f044-f011-91e3-005056b6948b"
 
 
@@ -103,10 +105,10 @@ async def main():
             return
 
         # --- Шаг 2: Выполнение импорта ---
-        user_input = input("\nПредварительный просмотр завершен. Начать импорт? (y/n): ")
-        if user_input.lower() != "y":
-            print("Импорт отменен пользователем.")
-            return
+        # user_input = input("\nПредварительный просмотр завершен. Начать импорт? (y/n): ")
+        # if user_input.lower() != "y":
+        #     print("Импорт отменен пользователем.")
+        #     return
 
         logging.info("Запуск импорта...")
         result = await importer.import_from_excel(EXCEL_FILE_PATH, PARENT_OBJECT_ID)

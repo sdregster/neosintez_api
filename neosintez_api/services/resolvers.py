@@ -5,6 +5,8 @@
 
 from typing import TYPE_CHECKING, Optional
 
+from neosintez_api.services.cache import TTLCache
+
 
 if TYPE_CHECKING:
     from neosintez_api.core.client import NeosintezClient
@@ -19,12 +21,19 @@ class AttributeResolver:
     Например, находит ID для строкового значения ссылочного атрибута.
     """
 
+    _link_cache: TTLCache[dict] = TTLCache(default_ttl=3600, max_size=10_000)
+
     def __init__(self, client: "NeosintezClient"):
         self.search_service = ObjectSearchService(client)
+
+    def _make_key(self, cls_id: str, root_id: str | None, value: str) -> str:
+        """Создает стандартизированный ключ для кэша ссылок."""
+        return f"{cls_id}|{root_id or ''}|{value.lower()}"
 
     async def resolve_link_attribute_as_object(self, attr_meta: "Attribute", attr_value: str) -> dict:
         """
         Находит объект для ссылочного атрибута по его строковому значению.
+        Результаты кэшируются для ускорения повторных вызовов.
 
         Args:
             attr_meta: Метаданные атрибута, из которых берутся ограничения.
@@ -60,6 +69,11 @@ class AttributeResolver:
                 f"Не удалось извлечь ID класса справочника (Constraint Type 1) для атрибута '{attr_meta.Name}'"
             )
 
+        # Проверяем кэш перед выполнением дорогостоящего поиска
+        key = self._make_key(linked_class_id, parent_id, attr_value)
+        if cached_result := self._link_cache.get(key):
+            return cached_result
+
         possible_options = await self.search_service.find_objects_by_class(
             class_id=linked_class_id, parent_id=parent_id
         )
@@ -70,7 +84,10 @@ class AttributeResolver:
         )
 
         if found_option:
-            return {"Id": str(found_option.Id), "Name": found_option.Name}
+            result = {"Id": str(found_option.Id), "Name": found_option.Name}
+            # Сохраняем успешный результат в кэш
+            self._link_cache.set(key, result)
+            return result
         else:
             raise ValueError(
                 f"Не удалось найти связанный объект с именем '{attr_value}' для атрибута '{attr_meta.Name}'."

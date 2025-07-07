@@ -8,8 +8,8 @@ from neosintez_api.core.exceptions import NeosintezAPIError
 from neosintez_api.models import Attribute
 from neosintez_api.services.class_service import ClassService
 from neosintez_api.services.factories.model_factory import (
+    DynamicModelFactory,
     ObjectBlueprint,
-    _create_pydantic_model,
 )
 
 
@@ -34,6 +34,14 @@ class ObjectToModelFactory:
         """
         self.client = client
         self.class_service = ClassService(client)
+        # Внутренняя фабрика для создания самих Pydantic моделей.
+        # Алиасы не нужны, так как мы работаем с данными из API, а не от пользователя.
+        self._model_factory = DynamicModelFactory(
+            client=self.client,
+            class_service=self.class_service,
+            name_aliases=[],
+            class_name_aliases=[],
+        )
 
     async def create_from_object_id(self, object_id: str) -> ObjectBlueprint:
         """
@@ -70,8 +78,8 @@ class ObjectToModelFactory:
         class_attributes = await self.class_service.get_attributes(class_id)
         attributes_meta = {attr.Name: attr for attr in class_attributes}
 
-        # 4. Создаем Pydantic модель
-        model_class = _create_pydantic_model(class_info.Name, attributes_meta)
+        # 4. Создаем Pydantic модель через внутреннюю фабрику (с кэшем)
+        model_class = self._model_factory._get_or_create_pydantic_model(class_info.Name, attributes_meta)
 
         # 5. Заполняем модель данными объекта
         model_instance = self._populate_model_from_object(model_class, object_data, attributes_meta, class_id)
@@ -83,6 +91,8 @@ class ObjectToModelFactory:
             attributes_meta=attributes_meta,
             class_id=class_id,
             class_name=class_info.Name,
+            user_data=object_data,  # В качестве user_data используем сырые данные
+            display_representation=object_data.get("Attributes", {}),
         )
 
     async def _get_object_data(self, object_id: str) -> Dict[str, Any]:
