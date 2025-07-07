@@ -424,13 +424,11 @@ class ExcelImporter:
                     # Получаем адаптивные настройки производительности
                     from neosintez_api.config import PerformanceSettings
 
-                    perf_settings = PerformanceSettings.get_optimized_settings(len(requests_to_process))
-
                     # Используем максимально оптимизированную версию create_many_optimized
                     creation_result = await self.object_service.create_many_optimized(
                         requests_to_process,
-                        max_concurrent_create=perf_settings["max_concurrent_create"],
-                        max_concurrent_attrs=perf_settings["max_concurrent_attrs"],
+                        max_concurrent_create=PerformanceSettings.MAX_CONCURRENT_OBJECT_CREATION,
+                        max_concurrent_attrs=PerformanceSettings.MAX_CONCURRENT_ATTRIBUTE_SETTING,
                     )
 
                     # Обрабатываем успешные результаты

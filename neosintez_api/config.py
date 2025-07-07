@@ -62,10 +62,10 @@ class PerformanceSettings:
     """НОВЫЕ настройки производительности для оптимизированного импорта"""
 
     # Настройки параллельности создания объектов
-    MAX_CONCURRENT_OBJECT_CREATION = 3  # Консервативное значение для стабильности
+    MAX_CONCURRENT_OBJECT_CREATION = 25  # Консервативное значение для стабильности
 
     # Настройки параллельности установки атрибутов
-    MAX_CONCURRENT_ATTRIBUTE_SETTING = 8  # Больше для batch операций
+    MAX_CONCURRENT_ATTRIBUTE_SETTING = 35  # Больше для batch операций
 
     # Настройки кэширования
     ENABLE_CLASS_METADATA_CACHING = True
