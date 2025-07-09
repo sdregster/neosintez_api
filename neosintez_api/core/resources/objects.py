@@ -128,7 +128,21 @@ class ObjectsResource(BaseResource):
 
         result = await self._request("GET", endpoint)
         if isinstance(result, list):
-            return [NeoObject.model_validate(item) for item in result]
+            # API возвращает WioObjectNode, нужно преобразовать в NeoObject
+            objects = []
+            for item in result:
+                # Извлекаем EntityId из вложенного объекта Entity
+                if isinstance(item, dict) and "Entity" in item and isinstance(item["Entity"], dict):
+                    # Создаем данные для NeoObject
+                    neo_object_data = {
+                        "Id": item["Id"],
+                        "Name": item["Name"],
+                        "Description": item.get("Description"),
+                        "EntityId": item["Entity"]["Id"],  # Извлекаем ID из Entity
+                        "Attributes": {},  # WioObjectNode не содержит атрибуты, только структуру дерева
+                    }
+                    objects.append(NeoObject.model_validate(neo_object_data))
+            return objects
         return []
 
     async def search(
