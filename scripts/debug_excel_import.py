@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 
-from neosintez_api.config import settings
 from neosintez_api.core.client import NeosintezClient
 from neosintez_api.services.excel_importer import ExcelImporter
 

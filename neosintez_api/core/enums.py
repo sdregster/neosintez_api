@@ -59,6 +59,184 @@ class WioAttributeType(int, Enum):
         }.get(self, "Unknown")
 
 
+class SearchFilterType(int, Enum):
+    """
+    Типы фильтров для поиска объектов в API Неосинтез.
+
+    - `BY_ATTRIBUTE`: Поиск по значению атрибута.
+    - `BY_FULL_TEXT`: Полнотекстовый поиск.
+    - `BY_NAME`: Поиск по имени объекта.
+    - `BY_ID`: Поиск по ID объекта.
+    - `BY_PARENT`: Поиск по ID родительского объекта.
+    - `BY_CLASS`: Поиск по ID класса.
+    - `BY_EXTERNAL_ID`: Поиск по ID в сторонней системе.
+    - `BY_GEOMETRY`: Поиск по геометрии.
+    """
+
+    BY_ATTRIBUTE = 0
+    BY_FULL_TEXT = 1
+    BY_NAME = 2
+    BY_ID = 3
+    BY_PARENT = 4
+    BY_CLASS = 5
+    BY_EXTERNAL_ID = 6
+    BY_GEOMETRY = 7
+
+
+class SearchConditionType(int, Enum):
+    """
+    Типы условий для поиска объектов согласно API Неосинтез.
+
+    Основан на SearchConditionType из swagger.json.
+    """
+
+    ATTRIBUTE = 1
+    """Поиск по атрибуту."""
+
+    NAME = 2
+    """Поиск по имени."""
+
+    LEVEL = 3
+    """Поиск по уровню."""
+
+    PARENT = 4
+    """Поиск по родителю."""
+
+    ENTITY = 5
+    """Поиск по сущности."""
+
+    CREATED_BY = 6
+    """Поиск по создателю."""
+
+    CREATION_DATE = 7
+    """Поиск по дате создания."""
+
+    DESCENDANTS = 8
+    """Поиск по потомкам."""
+
+    ANCESTORS = 9
+    """Поиск по предкам."""
+
+    MODIFICATION_DATE = 10
+    """Поиск по дате модификации."""
+
+    ELEMENT_LINK = 11
+    """Поиск по связи элемента."""
+
+    ID = 15
+    """Поиск по ID."""
+
+    VERSION = 16
+    """Поиск по версии."""
+
+    VERSION_TIMESTAMP = 17
+    """Поиск по временной метке версии."""
+
+
+class SearchOperatorType(int, Enum):
+    """
+    Типы операторов для поиска согласно API Неосинтез.
+
+    Основан на SearchOperatorType из swagger.json.
+    """
+
+    EQUALS = 1
+    """Равно."""
+
+    NOT_EQUALS = 2
+    """Не равно."""
+
+    GREATER = 3
+    """Больше."""
+
+    LESS = 4
+    """Меньше."""
+
+    GREATER_OR_EQUAL = 5
+    """Больше или равно."""
+
+    LESS_OR_EQUAL = 6
+    """Меньше или равно."""
+
+    EXISTS = 7
+    """Существует."""
+
+    NOT_EXISTS = 8
+    """Не существует."""
+
+    STARTS_WITH = 9
+    """Начинается с."""
+
+    CONTAINS = 10
+    """Содержит."""
+
+    NOT_CONTAINS = 11
+    """Не содержит."""
+
+    CONTAINS_OBJECT = 12
+    """Содержит объект."""
+
+    NOT_CONTAINS_OBJECT = 13
+    """Не содержит объект."""
+
+    CONTAINS_WORD = 14
+    """Содержит слово."""
+
+    NOT_CONTAINS_WORD = 15
+    """Не содержит слово."""
+
+
+class SearchLogicType(int, Enum):
+    """
+    Типы логики для объединения условий поиска согласно API Неосинтез.
+
+    Основан на SearchLogicType из swagger.json.
+    """
+
+    NONE = 0
+    """Без логики."""
+
+    OR = 1
+    """ИЛИ."""
+
+    AND = 2
+    """И."""
+
+
+class SearchQueryMode(int, Enum):
+    """
+    Режимы поискового запроса согласно API Неосинтез.
+
+    Основан на SearchQueryMode из swagger.json.
+    """
+
+    ACTUAL_ONLY = 0
+    """Только актуальные."""
+
+    ACTUAL_AND_VERSIONED = 1
+    """Актуальные и версионные."""
+
+    VERSIONED_ONLY = 2
+    """Только версионные."""
+
+
+class SearchDirectionType(int, Enum):
+    """
+    Типы направления для поиска согласно API Неосинтез.
+
+    Основан на SearchDirectionType из swagger.json.
+    """
+
+    NONE = 0
+    """Без направления."""
+
+    INSIDE = 1
+    """Внутри."""
+
+    OUTSIDE = 2
+    """Снаружи."""
+
+
 class HTTPMethod(str, Enum):
     """HTTP методы для запросов к API."""
 

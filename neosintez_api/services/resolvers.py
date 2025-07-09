@@ -74,9 +74,11 @@ class AttributeResolver:
         if cached_result := self._link_cache.get(key):
             return cached_result
 
-        possible_options = await self.search_service.find_objects_by_class(
-            class_id=linked_class_id, parent_id=parent_id
-        )
+        query = self.search_service.query().with_class_id(linked_class_id)
+        if parent_id:
+            query.with_parent_id(parent_id)
+
+        possible_options = await query.find_all()
 
         found_option = next(
             (option for option in possible_options if option.Name.lower() == attr_value.lower()),

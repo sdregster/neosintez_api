@@ -3,10 +3,14 @@
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+
+
+if TYPE_CHECKING:
+    pass
 
 
 class TokenResponse(BaseModel):
@@ -46,32 +50,46 @@ class SearchFilter(BaseModel):
 
 class SearchCondition(BaseModel):
     """
-    Условие для поиска объектов.
+    Условие для поиска объектов согласно API Неосинтез.
 
     Attributes:
-        AttributeId: ID атрибута для условия поиска
-        Operation: Операция сравнения
-        Value: Значение для сравнения
+        Type: Тип условия поиска (SearchConditionType)
+        Value: Значение для поиска
+        Direction: Направление поиска (SearchDirectionType)
+        Attribute: ID атрибута для поиска по атрибуту
+        Operator: Оператор сравнения (SearchOperatorType)
+        Logic: Логика объединения условий (SearchLogicType)
+        Group: Группа условий
+        Contextual: Контекстный поиск
+        Conditions: Вложенные условия
     """
 
-    AttributeId: UUID
-    Operation: str
-    Value: Any
+    Type: int = Field(..., description="Тип условия поиска")
+    Value: Optional[str] = Field(None, description="Значение для поиска")
+    Direction: Optional[int] = Field(None, description="Направление поиска")
+    Attribute: Optional[UUID] = Field(None, description="ID атрибута для поиска по атрибуту")
+    Operator: Optional[int] = Field(None, description="Оператор сравнения")
+    Logic: Optional[int] = Field(None, description="Логика объединения условий")
+    Group: Optional[str] = Field(None, description="Группа условий")
+    Contextual: Optional[bool] = Field(False, description="Контекстный поиск")
+    Conditions: Optional[List["SearchCondition"]] = Field(None, description="Вложенные условия")
 
 
 class SearchRequest(BaseModel):
     """
-    Запрос на поиск объектов.
+    Запрос на поиск объектов согласно API Неосинтез.
 
     Attributes:
         Filters: Список фильтров
         Conditions: Список условий
+        Mode: Режим поиска (SearchQueryMode)
         Take: Количество записей для выборки
         Skip: Количество записей для пропуска (для пагинации)
     """
 
-    Filters: List[SearchFilter] = Field(default_factory=list)
-    Conditions: List[SearchCondition] = Field(default_factory=list)
+    Filters: List[SearchFilter] = Field(default_factory=list, description="Список фильтров")
+    Conditions: List[SearchCondition] = Field(default_factory=list, description="Список условий")
+    Mode: Optional[int] = Field(0, description="Режим поиска")
     Take: Optional[int] = Field(None, description="Лимит выборки")
     Skip: Optional[int] = Field(None, description="Смещение выборки")
 

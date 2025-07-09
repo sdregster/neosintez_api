@@ -11,6 +11,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from neosintez_api.core.resources import AttributesResource, ClassesResource, ObjectsResource
+from neosintez_api.services.object_search_service import ObjectSearchService
 from neosintez_api.utils import CustomJSONEncoder, parse_error_response, retry
 
 from ..config import NeosintezConfig
@@ -54,6 +55,19 @@ class NeosintezClient:
         self.objects = ObjectsResource(self)
         self.attributes = AttributesResource(self)
         self.classes = ClassesResource(self)
+
+        # Ленивая инициализация сервисов
+        self._search_service: Optional[ObjectSearchService] = None
+
+    @property
+    def search(self) -> ObjectSearchService:
+        """
+        Предоставляет доступ к сервису поиска объектов.
+        Сервис инициализируется "лениво" при первом обращении.
+        """
+        if self._search_service is None:
+            self._search_service = ObjectSearchService(self)
+        return self._search_service
 
     async def __aenter__(self) -> "NeosintezClient":
         """
