@@ -6,6 +6,7 @@ from typing import Optional
 
 from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path  # Для построения пути к .env в корне проекта
 
 
 class NeosintezConfig(BaseSettings):
@@ -52,7 +53,11 @@ class NeosintezConfig(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="NEOSINTEZ_",
-        env_file=".env",
+        # Сначала ищем .env в текущей директории, затем в корне проекта
+        env_file=(
+            ".env",
+            str(Path(__file__).parent.parent / ".env"),
+        ),
         env_file_encoding="utf-8",
         extra="ignore",
     )
