@@ -41,8 +41,22 @@ class SearchQueryBuilder:
         self._class_name: Optional[str] = None
 
     def with_name(self, name: str) -> Self:
-        """Добавляет фильтр по точному имени объекта (Регистронезависимый)."""
-        self._filters.append(SearchFilter(Type=SearchFilterType.BY_NAME, Value=name))
+        """
+        Добавляет условие поиска по имени объекта (регистронезависимый).
+
+        Args:
+            name: Имя объекта для поиска.
+        Returns:
+            Self: Для цепочки вызовов.
+        """
+        condition = SearchCondition(
+            Type=SearchConditionType.NAME,
+            Value=name,
+            Operator=SearchOperatorType.EQUALS,
+            Logic=SearchLogicType.NONE,
+            Direction=SearchDirectionType.NONE,
+        )
+        self._conditions.append(condition)
         return self
 
     def with_class_id(self, class_id: str) -> Self:
