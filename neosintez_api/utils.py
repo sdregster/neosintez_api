@@ -452,6 +452,8 @@ def build_attribute_body(attr_meta: Any, value: Any) -> Dict[str, Any]:
         formatted_value = value
     elif isinstance(value, (datetime, date, UUID)):
         formatted_value = str(value.isoformat() if isinstance(value, (datetime, date)) else value)
+    elif isinstance(value, dict):
+        formatted_value = value
     else:
         formatted_value = str(value)
 

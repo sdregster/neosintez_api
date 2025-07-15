@@ -50,18 +50,38 @@ class ObjectMapper:
             if alias in attr_meta_by_name:
                 attr_meta = attr_meta_by_name[alias]
 
-                # Проверяем тип атрибута. Временно пропускаем файловые атрибуты.
                 attr_type_val = attr_meta.get("Type")
-                if attr_type_val is not None and attr_type_val == WioAttributeType.FILE:
-                    logger.warning(
-                        f"Атрибут '{alias}' (поле: {field_name}) является файловым и будет пропущен. "
-                        "Загрузка файлов пока не поддерживается."
-                    )
-                    continue
-
-                # Получаем значение поля из модели
                 value = getattr(model, field_name)
 
+                if attr_type_val is not None and attr_type_val == WioAttributeType.FILE:
+                    # Файловый атрибут: ожидаем dict с нужными ключами
+                    if isinstance(value, dict):
+                        required_keys = {"Id", "Name", "Extension", "Size", "MediaType", "TempToken"}
+                        if required_keys.issubset(value.keys()):
+                            attr_body = build_attribute_body(attr_meta, value)
+                            attributes.append(attr_body)
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug(
+                                    f"Подготовлен файловый атрибут '{alias}' (поле: {field_name}) со значением: {value}"
+                                )
+                        else:
+                            logger.error(
+                                f"Файловый атрибут '{alias}' (поле: {field_name}) содержит некорректный dict: {value}. Пропущен."
+                            )
+                        continue
+                    elif isinstance(value, str):
+                        logger.error(
+                            f"Файловый атрибут '{alias}' (поле: {field_name}) содержит строку вместо dict (ошибка обработки). Пропущен."
+                        )
+                        continue
+                    elif value is None:
+                        continue
+                    else:
+                        logger.error(
+                            f"Файловый атрибут '{alias}' (поле: {field_name}) имеет неподдерживаемый тип: {type(value)}. Пропущен."
+                        )
+                        continue
+                # Обычные атрибуты
                 if value is not None:
                     attr_body = build_attribute_body(attr_meta, value)
                     attributes.append(attr_body)

@@ -16,6 +16,7 @@ from neosintez_api.core.exceptions import NeosintezAPIError
 from ..core.client import NeosintezClient
 from ..core.enums import WioAttributeType
 from .class_service import ClassService
+from .content_service import ContentService
 from .factories import DynamicModelFactory
 from .object_service import CreateRequest, ObjectService
 from .resolvers import AttributeResolver
@@ -86,6 +87,7 @@ class ExcelImporter:
         )
         self._class_attributes_cache: Dict[str, Dict[str, Any]] = {}
         self.resolver = AttributeResolver(client)
+        self._content_service = None
 
     async def analyze_structure(self, excel_path: str, worksheet_name: Optional[str] = None) -> ExcelStructure:
         """
@@ -534,6 +536,101 @@ class ExcelImporter:
                 return headers_lower.index(name)
         return None
 
+    async def _process_file_attributes(
+        self,
+        objects_to_create: List[Dict[str, Any]],
+    ) -> List[str]:
+        """
+        Обрабатывает файловые атрибуты: загружает файлы и подставляет ContentId в объекты.
+        Возвращает список ошибок загрузки файлов в формате:
+        "Строка <row_index>: Не удалось загрузить файл для атрибута '<attr_name>': <ошибка>"
+        """
+        errors: List[str] = []
+        if not objects_to_create:
+            return errors
+
+        logger.info(f"Начата обработка файловых атрибутов для {len(objects_to_create)} объектов...")
+        # Собираем все уникальные (object_idx, attr_name, file_path) для файловых атрибутов
+        file_tasks = []  # (object_idx, attr_name, file_path)
+        for idx, obj in enumerate(objects_to_create):
+            class_name = obj.get("class_name")
+            attributes = obj.get("attributes", {})
+            if not class_name or not attributes:
+                continue
+            attributes_meta = self._class_attributes_cache.get(class_name)
+            if not attributes_meta:
+                continue
+            for attr_name, value in attributes.items():
+                attr_meta = attributes_meta.get(attr_name)
+                if not attr_meta:
+                    continue
+                attr_type = getattr(attr_meta, "Type", None)
+                attr_type_id = attr_type.Id if hasattr(attr_type, "Id") else attr_type
+                if attr_type_id == WioAttributeType.FILE.value and isinstance(value, str):
+                    file_tasks.append((idx, attr_name, value))
+
+        if not file_tasks:
+            logger.info("Файловых атрибутов для загрузки не обнаружено.")
+            return errors
+
+        logger.info(
+            f"Обнаружено {len(file_tasks)} файловых атрибутов, требуется загрузить {len(set(f[2] for f in file_tasks))} уникальных файлов."
+        )
+        # Группируем по уникальным путям, чтобы не загружать один и тот же файл дважды
+        path_to_content_id: Dict[str, Optional[dict]] = {}
+        unique_paths = {file_path for _, _, file_path in file_tasks}
+        content_service = self._get_content_service()
+
+        async def upload_file(file_path: str) -> tuple[str, Optional[dict], Optional[str]]:
+            """
+            Загружает файл и возвращает (file_path, content_dict, error_msg)
+            content_dict — полный dict, возвращаемый upload_content
+            """
+            import os
+
+            if not os.path.exists(file_path):
+                logger.warning(f"Файл не найден: {file_path}")
+                return file_path, None, f"Файл не найден: {file_path}"
+            try:
+                result = await content_service.upload_content(file_path)
+                content_id = result.get("Id") or result.get("ContentId")
+                if not content_id:
+                    logger.error(f"Не удалось получить ContentId после загрузки файла: {file_path}")
+                    return file_path, None, f"Не удалось получить ContentId после загрузки файла: {file_path}"
+                logger.info(f"Файл успешно загружен: {file_path} → ContentId={content_id}")
+                return file_path, result, None
+            except Exception as e:
+                logger.error(f"Ошибка загрузки файла '{file_path}': {e}")
+                return file_path, None, f"Ошибка загрузки файла '{file_path}': {e}"
+
+        # Параллельно загружаем все уникальные файлы
+        upload_results = await asyncio.gather(*(upload_file(path) for path in unique_paths), return_exceptions=False)
+        for file_path, content_dict, error_msg in upload_results:
+            if content_dict:
+                path_to_content_id[file_path] = content_dict
+            else:
+                path_to_content_id[file_path] = None
+
+        # Подставляем полный dict в объекты, ошибки формируем с деталями
+        for idx, attr_name, file_path in file_tasks:
+            content_dict = path_to_content_id.get(file_path)
+            obj = objects_to_create[idx]
+            row_index = obj.get("row_index", idx + 2)  # Excel-стиль: +2 (заголовок + 1-индексация)
+            if content_dict:
+                objects_to_create[idx]["attributes"][attr_name] = content_dict
+            else:
+                error_msg = (
+                    f"Строка {row_index}: Не удалось загрузить файл для атрибута '{attr_name}' (путь: {file_path})"
+                )
+                errors.append(error_msg)
+                logger.error(error_msg)
+                # Оставляем исходное значение (путь), чтобы пользователь видел проблему
+
+        logger.info(
+            f"Обработка файловых атрибутов завершена. Успешно: {len(file_tasks) - len(errors)}, ошибок: {len(errors)}."
+        )
+        return errors
+
     async def _load_objects_sequentially(
         self,
         excel_path: str,
@@ -643,6 +740,12 @@ class ExcelImporter:
             except (ValueError, IndexError) as e:
                 logger.error(f"Ошибка парсинга строки {index + 2}: {e}", exc_info=True)
                 continue
+
+        # После формирования objects_to_create — сначала кэшируем метаданные классов
+        await self._preload_class_metadata(objects_to_create)
+        # Затем обрабатываем файловые атрибуты
+        file_attr_errors = await self._process_file_attributes(objects_to_create)
+        errors.extend(file_attr_errors)
 
         return objects_to_create, errors
 
@@ -958,3 +1061,11 @@ class ExcelImporter:
             objects_to_create.append(object_data)
 
         return objects_to_create
+
+    def _get_content_service(self) -> ContentService:
+        """
+        Лениво инициализирует и возвращает ContentService для работы с файлами.
+        """
+        if self._content_service is None:
+            self._content_service = ContentService(self.client)
+        return self._content_service
