@@ -5,6 +5,7 @@
 from .attributes import AttributesResource
 from .base import BaseResource
 from .classes import ClassesResource
+from .content import ContentResource
 from .objects import ObjectsResource
 
 
@@ -13,4 +14,5 @@ __all__ = [
     "ObjectsResource",
     "AttributesResource",
     "ClassesResource",
+    "ContentResource",
 ]
