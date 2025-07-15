@@ -699,10 +699,6 @@ class ExcelImporter:
                         continue
 
                 attributes_meta = self._class_attributes_cache[class_name]
-                if not attributes_meta:
-                    if f"Класс '{class_name}' не найден в системе." not in errors:
-                        errors.append(f"Класс '{class_name}' не найден в системе.")
-                    continue
 
                 # Проверяем, что все атрибуты из файла существуют в классе
                 for attr_name in obj_data.get("attributes", {}):
