@@ -1,12 +1,14 @@
 """
-Ресурсный класс для работы с контентом (файлами) в API Неосинтез.
+Контент‑ресурс для API Неосинтез c корректным filename*=UTF‑8.
 """
 
 import logging
+import mimetypes
 from pathlib import Path
 from typing import Optional, Union
 
 import aiohttp
+from aiohttp import payload
 
 from neosintez_api.core.resources.base import BaseResource
 
@@ -15,13 +17,9 @@ logger = logging.getLogger("neosintez_api.resources.content")
 
 
 class ContentResource(BaseResource):
-    """
-    Ресурсный класс для работы с контентом (файлами) в API Неосинтез.
-    """
-
     async def upload(self, file_path: Union[str, Path], filename: Optional[str] = None) -> dict:
         """
-        Загружает файл в API Неосинтез через multipart/form-data.
+        Загружает файл в API Неосинтез с корректным именем файла (без percent-encoding).
 
         Args:
             file_path: Путь к файлу для загрузки
@@ -31,35 +29,61 @@ class ContentResource(BaseResource):
             dict: Данные о загруженном контенте
 
         Raises:
+            FileNotFoundError: Если файл не найден
             Exception: В случае ошибки загрузки
         """
         endpoint = "api/content"
-        file_path = Path(file_path)
-        if not file_path.exists() or not file_path.is_file():
-            raise FileNotFoundError(f"Файл не найден: {file_path}")
-        send_filename = filename or file_path.name
+        file_path = Path(file_path).resolve()
 
-        # Получаем сессию и заголовки
+        logger.debug("Исходный путь к файлу: %s", file_path)
+        logger.debug("Тип file_path: %s", type(file_path))
+
+        if not file_path.is_file():
+            logger.error("Файл не найден: %s", file_path)
+            raise FileNotFoundError(file_path)
+
+        send_filename = filename or file_path.name
+        logger.debug("Имя файла для отправки (send_filename): %s", send_filename)
+        logger.debug("Тип send_filename: %s", type(send_filename))
+        logger.debug("Кодировка send_filename (bytes): %s", send_filename.encode("utf-8", errors="replace"))
+
+        content_type, _ = mimetypes.guess_type(send_filename)
+        content_type = content_type or "application/octet-stream"
+        logger.debug("Определённый Content-Type: %s", content_type)
+
         session = self.client.session
         headers = await self.client._get_headers()
-        # Удаляем Content-Type, aiohttp сам выставит boundary для multipart
-        headers.pop("Content-Type", None)
+        logger.debug("Заголовки до удаления Content-Type: %s", headers)
+        headers.pop("Content-Type", None)  # boundary → aiohttp
+        logger.debug("Заголовки после удаления Content-Type: %s", headers)
 
-        logger.debug(f"Загрузка файла '{file_path}' как '{send_filename}' на эндпоинт {endpoint}")
-        data = aiohttp.FormData()
-        data.add_field(
-            name="file",
-            value=file_path.open("rb"),
-            filename=send_filename,
-            content_type="application/octet-stream",
+        # ---------- собираем multipart вручную ----------
+        mw = aiohttp.MultipartWriter("form-data")
+
+        part_headers = {
+            "Content-Disposition": f'form-data; name="file"; filename="{send_filename}"',
+            "Content-Type": content_type,
+        }
+        logger.debug("part_headers: %s", part_headers)
+
+        part = payload.BufferedReaderPayload(
+            file_path.open("rb"),
+            headers=part_headers,
         )
+        mw.append_payload(part)
+        logger.debug("Добавлен part: %s", part)
+        logger.debug("part.headers: %s", dict(part.headers))
+        # -------------------------------------------------
 
-        async with session.post(endpoint, data=data, headers=headers, ssl=self.client.settings.verify_ssl) as response:
-            logger.debug(f"Ответ сервера: {response.status}")
-            if response.status >= 400:
-                text = await response.text()
-                logger.error(f"Ошибка загрузки файла: {response.status} - {text}")
-                raise Exception(f"Ошибка загрузки файла: {response.status} - {text}")
-            resp_json = await response.json()
-            logger.debug(f"Ответ JSON: {resp_json}")
-            return resp_json
+        logger.info("POST %s (filename='%s')", endpoint, send_filename)
+
+        async with session.post(endpoint, data=mw, headers=headers, ssl=self.client.settings.verify_ssl) as r:
+            logger.info("Статус ответа: %s", r.status)
+            logger.debug("Заголовки ответа: %s", dict(r.headers))
+            if r.status >= 400:
+                text = await r.text()
+                logger.error("Ошибка загрузки: %s – %s", r.status, text)
+                raise Exception(f"upload error {r.status}: {text}")
+            result = await r.json()
+            logger.info("Ответ JSON: %s", result)
+            return result
