@@ -2,11 +2,11 @@
 Конфигурационные параметры для работы с API Неосинтез.
 """
 
+from pathlib import Path  # Для построения пути к .env в корне проекта
 from typing import Optional
 
 from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pathlib import Path  # Для построения пути к .env в корне проекта
 
 
 class NeosintezConfig(BaseSettings):
@@ -33,12 +33,18 @@ class NeosintezConfig(BaseSettings):
     client_id: str
     client_secret: str
     max_connections: int = 100
-    timeout: int = 60
+    # Базовый таймаут для обычных операций
+    timeout: int = Field(60, alias="NEOSINTEZ_TIMEOUT", ge=10, le=3600)  # От 10 секунд до 1 часа
     verify_ssl: bool = Field(True, alias="NEOSINTEZ_VERIFY_SSL")
     test_folder_id: Optional[str] = None
     test_folder_id_2: Optional[str] = None
     trash_folder_id: Optional[str] = None
-    request_timeout: int = Field(60, alias="NEOSINTEZ_REQUEST_TIMEOUT")
+
+    # Специальные таймауты для длительных операций
+    delete_timeout: int = Field(300, alias="NEOSINTEZ_DELETE_TIMEOUT", ge=60, le=3600)  # От 1 минуты до 1 часа
+    large_operation_timeout: int = Field(
+        600, alias="NEOSINTEZ_LARGE_OPERATION_TIMEOUT", ge=300, le=7200
+    )  # От 5 минут до 2 часов
 
     # Настройки кэша метаданных
     metadata_cache_ttl: int = 1800  # 30 минут в секундах
