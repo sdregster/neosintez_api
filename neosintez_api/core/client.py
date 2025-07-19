@@ -421,6 +421,134 @@ class NeosintezClient:
             logger.error(f"Трассировка: {traceback.format_exc()}")
             raise
 
+    async def _request_with_session(
+        self,
+        method: str,
+        endpoint: str,
+        session,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        data: Optional[Any] = None,
+        headers: Optional[Dict[str, str]] = None,
+        response_model: Optional[Type[T]] = None,
+    ) -> Union[T, Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Выполняет HTTP-запрос к API Неосинтез через переданную сессию.
+
+        Args:
+            method: HTTP-метод (GET, POST, PUT, DELETE)
+            endpoint: Конечная точка API
+            session: aiohttp.ClientSession для выполнения запроса
+            params: URL-параметры запроса
+            data: Данные запроса
+            headers: Дополнительные заголовки
+            response_model: Pydantic-модель для валидации ответа
+
+        Returns:
+            Union[T, Dict[str, Any], List[Dict[str, Any]]]: Ответ API
+
+        Raises:
+            NeosintezAPIError: В случае ошибки API
+            NeosintezConnectionError: При ошибке соединения
+            NeosintezTimeoutError: При таймауте запроса
+        """
+        # Убеждаемся, что у нас есть токен
+        if not self.token:
+            await self.auth()
+
+        request_headers = await self._get_headers()
+        if headers:
+            request_headers.update(headers)
+
+        # Если данные - это экземпляр Pydantic модели, то преобразуем его в словарь
+        if isinstance(data, BaseModel):
+            data = data.model_dump(exclude_none=True)
+
+        # Преобразуем данные в JSON, если они не None, используя кастомный энкодер
+        json_data = json.dumps(data, cls=CustomJSONEncoder) if data is not None else None
+
+        logger.debug(f"Запрос {method} {self.settings.base_url}{endpoint} (через переданную сессию)")
+        if params:
+            logger.debug(f"Параметры запроса: {params}")
+        if data:
+            logger.debug(f"Данные запроса: {json_data[:200]}..." if json_data else "None")
+
+        try:
+            async with session.request(
+                method=method,
+                url=f"{self.settings.base_url}{endpoint}",
+                params=params,
+                data=json_data,
+                headers=request_headers,
+                ssl=self.settings.verify_ssl,
+            ) as response:
+                # 1. Проверяем на ошибки
+                if response.status >= 400:
+                    error_details = await parse_error_response(response)
+                    logger.error(
+                        f"Ошибка API: {error_details['status_code']} - {error_details['message']} (URL: {response.url})"
+                    )
+                    raise NeosintezAPIError(
+                        status_code=error_details["status_code"],
+                        message=error_details["message"],
+                        response_data=error_details["data"],
+                    )
+
+                # 2. Обрабатываем успешный ответ без тела
+                if response.status == 204:
+                    return True
+
+                # 3. Если статус успешный и не 204, ожидаем JSON
+                try:
+                    response_data = await response.json()
+                except aiohttp.ContentTypeError as e:
+                    response_text = await response.text()
+                    logger.error(
+                        f"Ошибка декодирования JSON: {e!s}. "
+                        f"Статус: {response.status}. "
+                        f"Текст ответа: '{response_text[:200]}...'"
+                    )
+                    raise NeosintezAPIError(
+                        status_code=response.status,
+                        message=f"Ожидался JSON, но получен другой тип контента: {response.content_type}",
+                        response_data=response_text,
+                    ) from e
+
+                if response_model:
+                    try:
+                        if isinstance(response_data, list):
+                            return [response_model.model_validate(item) for item in response_data]
+                        else:
+                            return response_model.model_validate(response_data)
+                    except json.JSONDecodeError:
+                        # Если ответ не JSON, то возвращаем текст ответа
+                        text_response = await response.text()
+                        logger.debug(f"Ответ не является JSON: {text_response[:200]}...")
+                        return text_response
+
+                # Иначе возвращаем JSON как есть
+                return response_data
+
+        except aiohttp.ClientConnectionError as e:
+            logger.error(f"Ошибка соединения: {e!s}")
+            raise NeosintezConnectionError(f"Ошибка соединения: {e!s}") from e
+        except aiohttp.ClientResponseError as e:
+            logger.error(f"Ошибка ответа: {e!s}")
+            raise NeosintezAPIError(status_code=e.status, message=str(e), response_data=None) from e
+        except aiohttp.ClientError as e:
+            logger.error(f"Ошибка клиента: {e!s}")
+            raise NeosintezAPIError(status_code=500, message=str(e), response_data=None) from e
+        except asyncio.TimeoutError as e:
+            logger.error(f"Таймаут запроса: {e!s}")
+            raise NeosintezTimeoutError(f"Таймаут запроса: {e!s}") from e
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка: {e!s}")
+            logger.error(f"Тип ошибки: {type(e)}")
+            import traceback
+
+            logger.error(f"Трассировка: {traceback.format_exc()}")
+            raise
+
     async def get(
         self,
         endpoint: str,

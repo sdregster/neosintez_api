@@ -68,3 +68,39 @@ class BaseResource:
             headers=headers,
             response_model=response_model,
         )
+
+    async def _request_with_session(
+        self,
+        method: str,
+        endpoint: str,
+        session,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        data: Optional[Any] = None,
+        headers: Optional[Dict[str, str]] = None,
+        response_model: Optional[Type[T]] = None,
+    ) -> Union[T, Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Выполняет API запрос через переданную сессию.
+
+        Args:
+            method: HTTP метод
+            endpoint: URL эндпоинта
+            session: aiohttp.ClientSession для выполнения запроса
+            params: URL параметры
+            data: Данные для отправки
+            headers: HTTP заголовки
+            response_model: Модель для валидации ответа
+
+        Returns:
+            Union[T, Dict[str, Any], List[Dict[str, Any]]]: Ответ API
+        """
+        return await self.client._request_with_session(
+            method=method,
+            endpoint=endpoint,
+            session=session,
+            params=params,
+            data=data,
+            headers=headers,
+            response_model=response_model,
+        )
