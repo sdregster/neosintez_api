@@ -244,6 +244,28 @@ class ObjectsResource(BaseResource):
         # Создаем пустой объект в случае ошибки
         return PathResponse(AncestorsOrSelf=[])
 
+    async def get_dependencies(self, object_id: Union[str, UUID]) -> Dict[str, int]:
+        """
+        Получает информацию о зависимостях объекта.
+
+        Args:
+            object_id: ID объекта
+
+        Returns:
+            Dict[str, int]: Словарь с количеством зависимостей по типам
+                           {"Objects": количество объектов, "Links": количество связей, ...}
+        """
+        endpoint = f"api/objects/{object_id}/dependencies"
+
+        try:
+            result = await self._request("GET", endpoint)
+            if isinstance(result, dict):
+                return result
+            return {"Objects": 0, "Links": 0, "VersionLinks": 0, "Constraints": [], "VersionLinkAttributes": []}
+        except Exception as e:
+            logger.warning(f"Не удалось получить зависимости для объекта {object_id}: {e}")
+            return {"Objects": 0, "Links": 0, "VersionLinks": 0, "Constraints": [], "VersionLinkAttributes": []}
+
     async def get_paths_batch(
         self,
         object_ids: List[Union[str, UUID]],
@@ -472,10 +494,39 @@ class ObjectsResource(BaseResource):
             logger.error(f"Данные запроса: {attributes_array}")
             raise
 
-    async def delete(self, object_id: str):
-        """Удаляет объект."""
+    async def delete(self, object_id: str, timeout: Optional[int] = None):
+        """
+        Удаляет объект с настраиваемым таймаутом.
+
+        Args:
+            object_id: ID объекта для удаления
+            timeout: Таймаут в секундах (по умолчанию используется delete_timeout из конфигурации)
+        """
         endpoint = f"api/objects/{object_id}"
-        await self._request("DELETE", endpoint)
+
+        # Используем специальный таймаут для удаления, если не указан другой
+        if timeout is None:
+            timeout = self.client.settings.delete_timeout
+
+        logger.info(f"Удаление объекта {object_id} с таймаутом {timeout} секунд")
+
+        # Создаем отдельный запрос с увеличенным таймаутом
+        # Вместо изменения глобального состояния используем локальный таймаут
+        try:
+            # Используем aiohttp.ClientTimeout для безопасного управления таймаутом
+            import aiohttp
+
+            timeout_obj = aiohttp.ClientTimeout(total=timeout)
+
+            # Создаем временную сессию с нужным таймаутом
+            async with aiohttp.ClientSession(timeout=timeout_obj) as temp_session:
+                # Выполняем запрос через временную сессию
+                await self._request_with_session("DELETE", endpoint, session=temp_session)
+
+            logger.info(f"Объект {object_id} успешно удален")
+        except Exception as e:
+            logger.error(f"Ошибка при удалении объекта {object_id}: {e}")
+            raise
 
     async def set_attributes_batch(
         self,
@@ -494,7 +545,8 @@ class ObjectsResource(BaseResource):
             List[str]: Список ошибок (пустой список если все успешно)
         """
         logger.info(
-            f"Массовая установка атрибутов для {len(objects_attributes)} объектов с ограничением {max_concurrent} concurrent"
+            f"Массовая установка атрибутов для {len(objects_attributes)} объектов "
+            f"с ограничением {max_concurrent} concurrent"
         )
 
         semaphore = asyncio.Semaphore(max_concurrent)
