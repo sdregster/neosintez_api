@@ -10,7 +10,13 @@ from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 import aiohttp
 from pydantic import BaseModel
 
-from neosintez_api.core.resources import AttributesResource, ClassesResource, ContentResource, ObjectsResource
+from neosintez_api.core.resources import (
+    AttributesResource,
+    ClassesResource,
+    CollectionsResource,
+    ContentResource,
+    ObjectsResource,
+)
 from neosintez_api.services.object_search_service import ObjectSearchService
 from neosintez_api.utils import CustomJSONEncoder, parse_error_response, retry
 
@@ -55,6 +61,7 @@ class NeosintezClient:
         self.objects = ObjectsResource(self)
         self.attributes = AttributesResource(self)
         self.classes = ClassesResource(self)
+        self.collections = CollectionsResource(self)
         self.content = ContentResource(self)
 
         # Ленивая инициализация сервисов

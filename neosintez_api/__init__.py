@@ -15,6 +15,7 @@ from .core import (
     NeosintezValidationError,
 )
 from .model_utils import create_model_from_class_attributes, neosintez_model
+from .services.collection_service import CollectionService
 from .services.object_service import ObjectService
 
 
@@ -28,6 +29,7 @@ __all__ = [
     "NeosintezTimeoutError",
     "NeosintezValidationError",
     "ObjectService",
+    "CollectionService",
     "create_model_from_class_attributes",
     "neosintez_model",
     "models",

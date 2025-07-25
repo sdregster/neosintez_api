@@ -674,3 +674,69 @@ class ObjectService(Generic[T]):
         logger.info(f"Перемещение объекта {object_id} в корзину (ID: {settings.trash_folder_id})")
         await self.client.objects.move(object_id=str(object_id), parent_id=settings.trash_folder_id)
         return True
+
+    async def get_collection_items(
+        self,
+        object_id: Union[str, UUID],
+        attribute_name: str,
+        *,
+        order_by: Optional[str] = None,
+        order_direction: str = "asc",
+        page: int = 1,
+        page_size: int = 20,
+        filter_text: Optional[str] = None,
+    ):
+        """
+        Получает элементы коллекции объекта по имени атрибута.
+
+        Args:
+            object_id: ID объекта-владельца коллекции
+            attribute_name: Имя атрибута типа "Objects collection"
+            order_by: Поле для сортировки
+            order_direction: Направление сортировки ("asc" или "desc")
+            page: Номер страницы (начинается с 1)
+            page_size: Размер страницы
+            filter_text: Текст для фильтрации
+
+        Returns:
+            CollectionQueryResult: Результат с элементами коллекции
+
+        Raises:
+            ValueError: Если атрибут не найден или не является коллекцией
+        """
+        from neosintez_api.services.collection_service import CollectionService
+
+        # Получаем информацию об объекте для определения его класса
+        obj_data = await self.client.objects.get_by_id(object_id)
+        class_id = obj_data.get("EntityId") or obj_data.get("Entity", {}).get("Id")
+
+        if not class_id:
+            raise ValueError(f"Не удалось определить класс объекта {object_id}")
+
+        # Получаем атрибуты класса для поиска ID нужного атрибута
+        class_attributes = await self.class_service.get_class_attributes(class_id)
+
+        # Ищем атрибут по имени
+        attribute_id = None
+        for attr in class_attributes:
+            if attr.get("Name") == attribute_name:
+                attribute_id = attr.get("Id")
+                # Проверяем, что это атрибут коллекции (Type = 10)
+                if attr.get("Type") != 10:
+                    raise ValueError(f"Атрибут '{attribute_name}' не является коллекцией объектов")
+                break
+
+        if not attribute_id:
+            raise ValueError(f"Атрибут '{attribute_name}' не найден в классе {class_id}")
+
+        # Используем CollectionService для получения элементов
+        collection_service = CollectionService(self.client)
+        return await collection_service.get_collection_items(
+            object_id=object_id,
+            attribute_id=attribute_id,
+            order_by=order_by,
+            order_direction=order_direction,
+            page=page,
+            page_size=page_size,
+            filter_text=filter_text,
+        )

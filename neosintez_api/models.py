@@ -264,6 +264,78 @@ class PathResponse(BaseModel):
     AncestorsOrSelf: List[PathAncestor]
 
 
+class CollectionEntity(BaseModel):
+    """
+    Информация о классе объекта в коллекции.
+
+    Attributes:
+        Id: Идентификатор класса
+        Name: Наименование класса
+    """
+
+    Id: str
+    Name: str
+
+
+class CollectionObjectData(BaseModel):
+    """
+    Объект в коллекции со всеми данными.
+
+    Attributes:
+        Id: Идентификатор объекта
+        Name: Наименование объекта
+        Entity: Информация о классе объекта
+        Attributes: Атрибуты объекта
+        CreationDate: Дата создания
+        ModificationDate: Дата изменения
+        Owner: Владелец объекта
+        EffectivePermissions: Разрешения
+        Icon: Иконка (может быть null)
+        Version: Версия объекта
+        VersionTimestamp: Временная метка версии
+        IsActualVersion: Является ли актуальной версией
+    """
+
+    Id: str
+    Name: str
+    Entity: CollectionEntity
+    Attributes: Optional[Dict[str, Any]] = None
+    CreationDate: Optional[str] = None
+    ModificationDate: Optional[str] = None
+    Owner: Optional[Dict[str, Any]] = None
+    EffectivePermissions: Optional[int] = None
+    Icon: Optional[Any] = None
+    Version: Optional[int] = None
+    VersionTimestamp: Optional[str] = None
+    IsActualVersion: Optional[bool] = None
+
+
+class CollectionItem(BaseModel):
+    """
+    Элемент коллекции объектов.
+
+    Attributes:
+        Id: Идентификатор элемента коллекции
+        Object: Полный объект данных
+    """
+
+    Id: str = Field(..., description="Идентификатор элемента коллекции")
+    Object: CollectionObjectData = Field(..., description="Полный объект данных")
+
+
+class CollectionQueryResult(BaseModel):
+    """
+    Результат запроса коллекции с пагинацией.
+
+    Attributes:
+        Result: Список элементов коллекции
+        Total: Общее количество элементов
+    """
+
+    Result: Optional[List[CollectionItem]] = Field(None, description="Список элементов коллекции")
+    Total: int = Field(..., description="Общее количество элементов")
+
+
 class AttributeModel(BaseModel):
     """
     Модель атрибута для работы с API Неосинтеза.
