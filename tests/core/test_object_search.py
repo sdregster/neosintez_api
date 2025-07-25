@@ -11,7 +11,7 @@ from neosintez_api.services import ClassService, ObjectSearchService
 
 
 # Имя класса, который будет использоваться для тестов
-TEST_CLASS_NAME = "Стройка"
+TEST_CLASS_NAME = "Объект капитальных вложений"
 
 # Для проверки, что указание родителя влияет на область поиска строек
 TEST_PARENT_ID = "e569faab-99ae-ee11-9193-005056b6948b"

@@ -13,10 +13,10 @@ from neosintez_api.services.object_service import ObjectService
 
 # 1. Определение тестовой декларативной модели
 class StroykaTestModel(NeosintezBaseModel):
-    """Тестовая модель для объекта 'Стройка'."""
+    """Тестовая модель для объекта 'Объект капитальных вложений'."""
 
     class Neosintez:
-        class_name = "Стройка"
+        class_name = "Объект капитальных вложений"
 
     name: str = Field(..., description="Имя объекта")
     mvz: str = Field(..., alias="МВЗ")
@@ -63,7 +63,7 @@ async def test_declarative_create_read_delete_cycle(object_service: ObjectServic
         assert raw_read_data["Name"] == unique_name
 
         # Находим ID атрибута "ИР Адепт - Primavera"
-        class_meta = await object_service.class_service.find_by_name("Стройка")
+        class_meta = await object_service.class_service.find_by_name("Объект капитальных вложений")
         class_attrs = await object_service.class_service.get_attributes(str(class_meta[0].Id))
         link_attr_meta = next((attr for attr in class_attrs if attr.Name == "ИР Адепт - Primavera"), None)
         assert link_attr_meta is not None

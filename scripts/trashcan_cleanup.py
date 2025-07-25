@@ -95,7 +95,9 @@ class TrashcanCleanupService:
     Сервис для оптимизированной очистки корзины Неосинтеза.
     """
 
-    def __init__(self, client: NeosintezClient, max_objects_per_group: int = 100, exclude_keywords: Optional[List[str]] = None):
+    def __init__(
+        self, client: NeosintezClient, max_objects_per_group: int = 100, exclude_keywords: Optional[List[str]] = None
+    ):
         """
         Инициализирует сервис очистки корзины.
 
@@ -316,7 +318,13 @@ class TrashcanCleanupService:
         """
         logger.info("Начало процесса очистки корзины")
 
-        result: Dict[str, Any] = {"total_objects": 0, "processed_groups": 0, "successful_groups": 0, "failed_groups": 0, "errors": []}
+        result: Dict[str, Any] = {
+            "total_objects": 0,
+            "processed_groups": 0,
+            "successful_groups": 0,
+            "failed_groups": 0,
+            "errors": [],
+        }
 
         try:
             # Получаем объекты верхнего уровня

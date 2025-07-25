@@ -10,10 +10,10 @@ async def test_get_and_inspect_link_attribute_constraints(real_client: Neosintez
     Тест-исследование для получения и проверки реальной структуры
     ограничений (Constraints) у ссылочного атрибута.
     """
-    CLASS_NAME_TO_FIND = "Стройка"
+    CLASS_NAME_TO_FIND = "Объект капитальных вложений"
     ATTRIBUTE_NAME_TO_FIND = "ИР Адепт - Primavera"
 
-    # 1. Находим класс "Стройка"
+    # 1. Находим класс "Объект капитальных вложений"
     class_info_list = await real_client.classes.get_classes_by_name(CLASS_NAME_TO_FIND)
     assert class_info_list, f"Класс '{CLASS_NAME_TO_FIND}' не найден"
 
