@@ -96,13 +96,31 @@ class SearchQueryBuilder:
             operator: Оператор сравнения (по умолчанию EQUALS).
             logic: Логика объединения с другими условиями (по умолчанию NONE).
         """
+        # Специальная обработка для оператора EXISTS
+        # API Неосинтез требует "None" вместо пустой строки для EXISTS
+        if operator == SearchOperatorType.EXISTS and (value == "" or value is None):
+            value_str = "None"
+        else:
+            value_str = str(value)
+
+        # Определяем правильный Direction для оператора EXISTS
+        if operator == SearchOperatorType.EXISTS:
+            direction = SearchDirectionType.INSIDE
+        else:
+            direction = SearchDirectionType.NONE
+
+        # Автоматически управляем логикой для множественных условий
+        # Если это не первое условие, используем AND
+        if self._conditions and logic == SearchLogicType.NONE:
+            logic = SearchLogicType.AND
+
         condition = SearchCondition(
             Type=SearchConditionType.ATTRIBUTE,
-            Value=str(value),
+            Value=value_str,
             Attribute=UUID(attribute_id),
             Operator=operator,
             Logic=logic,
-            Direction=SearchDirectionType.NONE,
+            Direction=direction,
         )
         self._conditions.append(condition)
         return self
@@ -125,15 +143,33 @@ class SearchQueryBuilder:
             operator: Оператор сравнения (по умолчанию EQUALS).
             logic: Логика объединения с другими условиями (по умолчанию NONE).
         """
+        # Специальная обработка для оператора EXISTS
+        # API Неосинтез требует "None" вместо пустой строки для EXISTS
+        if operator == SearchOperatorType.EXISTS and (value == "" or value is None):
+            value_str = "None"
+        else:
+            value_str = str(value)
+
+        # Определяем правильный Direction для оператора EXISTS
+        if operator == SearchOperatorType.EXISTS:
+            direction = SearchDirectionType.INSIDE
+        else:
+            direction = SearchDirectionType.NONE
+
+        # Автоматически управляем логикой для множественных условий
+        # Если это не первое условие, используем AND
+        if self._conditions and logic == SearchLogicType.NONE:
+            logic = SearchLogicType.AND
+
         # Создаем временное условие с именем атрибута в качестве специального маркера
         # Реальный ID атрибута будет разрешен в _prepare_conditions()
         condition = SearchCondition(
             Type=SearchConditionType.ATTRIBUTE,
-            Value=str(value),
+            Value=value_str,
             Attribute=None,  # Будет заполнено в _prepare_conditions
             Operator=operator,
             Logic=logic,
-            Direction=SearchDirectionType.NONE,
+            Direction=direction,
         )
         # Временно сохраняем имя атрибута в Group для разрешения позже
         condition.Group = attribute_name

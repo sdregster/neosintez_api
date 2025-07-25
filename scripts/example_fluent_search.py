@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 
 from neosintez_api import NeosintezAPIError, NeosintezClient
+from neosintez_api.core.enums import SearchOperatorType
 from neosintez_api.services import ClassService
 
 
@@ -123,6 +124,100 @@ async def main():
 
         except (ValueError, NeosintezAPIError) as e:
             logging.error(f"Ошибка в Примере 4: {e}", exc_info=True)
+
+        # --- Пример 5: Поиск объектов с существующим атрибутом (любое значение) ---
+        logging.info("\n--- Пример 5: Поиск объектов с существующим атрибутом МВЗ (любое значение) ---")
+        try:
+            class_name = "Объект капитальных вложений"
+            attribute_name = "МВЗ"
+
+            # Используем оператор EXISTS для поиска объектов, где атрибут просто существует
+            # Значение может быть пустой строкой, поскольку для EXISTS важен только факт существования
+            objects_with_mvz = (
+                await search_service.query()
+                .with_class_name(class_name)
+                .with_attribute_name(attribute_name, "", SearchOperatorType.EXISTS)
+                .find_all()
+            )
+
+            logging.info(
+                f"Найдено {len(objects_with_mvz)} объектов класса '{class_name}' с существующим атрибутом '{attribute_name}'."
+            )
+
+            # Показываем первые 10 объектов с их значениями МВЗ для демонстрации
+            for i, obj in enumerate(objects_with_mvz[:10]):
+                logging.info(f"  {i + 1}. ID={obj.Id}, Имя='{obj.Name}'")
+                # Если доступны атрибуты, показываем значение МВЗ
+                if hasattr(obj, "Attributes") and obj.Attributes:
+                    mvz_attr = obj.Attributes.get(attribute_name)
+                    if mvz_attr is not None:
+                        logging.info(f"     МВЗ: {mvz_attr}")
+
+            if len(objects_with_mvz) > 10:
+                logging.info(f"  ... и ещё {len(objects_with_mvz) - 10} объектов.")
+
+        except (ValueError, NeosintezAPIError) as e:
+            logging.error(f"Ошибка в Примере 5: {e}", exc_info=True)
+
+        # --- Пример 6: Статистический анализ объектов с атрибутом МВЗ ---
+        logging.info("\n--- Пример 6: Статистический анализ объектов с атрибутом МВЗ ---")
+        try:
+            class_name = "Объект капитальных вложений"
+            attribute_name = "МВЗ"
+
+            # 1. Запрос всех объектов класса без условий
+            logging.info(f"Получаем все объекты класса '{class_name}'...")
+            all_objects = await search_service.query().with_class_name(class_name).find_all()
+            total_count = len(all_objects)
+            logging.info(f"Всего объектов в классе: {total_count}")
+
+            # 2. Запрос объектов где МВЗ существует
+            logging.info(f"Получаем объекты с существующим атрибутом '{attribute_name}'...")
+            objects_with_mvz = (
+                await search_service.query()
+                .with_class_name(class_name)
+                .with_attribute_name(attribute_name, "", SearchOperatorType.EXISTS)
+                .find_all()
+            )
+            with_mvz_count = len(objects_with_mvz)
+            logging.info(f"Объектов с заполненным МВЗ: {with_mvz_count}")
+
+            # 3. Запрос объектов где МВЗ НЕ существует
+            logging.info(f"Получаем объекты без атрибута '{attribute_name}'...")
+            objects_without_mvz = (
+                await search_service.query()
+                .with_class_name(class_name)
+                .with_attribute_name(attribute_name, "", SearchOperatorType.NOT_EXISTS)
+                .find_all()
+            )
+            without_mvz_count = len(objects_without_mvz)
+            logging.info(f"Объектов без МВЗ: {without_mvz_count}")
+
+            # 4. Проверка и вывод статистики
+            calculated_total = with_mvz_count + without_mvz_count
+            logging.info("\n=== СТАТИСТИКА ===")
+            logging.info(f"Всего объектов:           {total_count}")
+            logging.info(f"С заполненным МВЗ:        {with_mvz_count} ({with_mvz_count / total_count * 100:.1f}%)")
+            logging.info(
+                f"Без МВЗ:                  {without_mvz_count} ({without_mvz_count / total_count * 100:.1f}%)"
+            )
+            logging.info(f"Сумма (с МВЗ + без МВЗ):  {calculated_total}")
+
+            # Проверка корректности данных
+            if calculated_total == total_count:
+                logging.info("✅ Статистика корректна: сумма совпадает с общим количеством")
+            else:
+                logging.warning(f"⚠️  Несоответствие данных: {calculated_total} != {total_count}")
+                logging.warning("Возможно, есть объекты с частично заполненными атрибутами или особые случаи")
+
+            # Показываем несколько примеров объектов без МВЗ
+            if without_mvz_count > 0:
+                logging.info(f"\nПримеры объектов без атрибута '{attribute_name}':")
+                for i, obj in enumerate(objects_without_mvz[:5]):
+                    logging.info(f"  {i + 1}. ID={obj.Id}, Имя='{obj.Name}'")
+
+        except (ValueError, NeosintezAPIError) as e:
+            logging.error(f"Ошибка в Примере 6: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
