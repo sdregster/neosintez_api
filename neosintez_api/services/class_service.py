@@ -100,6 +100,31 @@ class ClassService:
         logger.info(f"Найдено {len(matching_classes)} классов по запросу '{name}' в кэше.")
         return matching_classes
 
+    async def find_by_names(self, names: List[str]) -> List[EntityClass]:
+        """
+        Находит классы в кэше по списку точных имен.
+        Поиск чувствителен к регистру для точного совпадения.
+
+        Args:
+            names: Список точных имен классов для поиска.
+
+        Returns:
+            Список найденных классов.
+        """
+        await self._ensure_cache_loaded()
+        logger.debug(f"Поиск классов по точным именам: {names} в кэше.")
+
+        # Создаем множество имен для быстрого поиска
+        names_set = {name.lower() for name in names}
+        matching_classes = []
+
+        for cls in self._class_cache.values():
+            if cls.Name.lower() in names_set:
+                matching_classes.append(cls)
+
+        logger.info(f"Найдено {len(matching_classes)} классов по запросу {names} в кэше.")
+        return matching_classes
+
     async def get_all(self) -> List[EntityClass]:
         """
         Получает все классы, доступные в системе, из кэша.

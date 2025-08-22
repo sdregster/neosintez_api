@@ -31,6 +31,21 @@ class SearchQueryBuilder:
     Построитель для создания и выполнения поисковых запросов к API Неосинтез.
 
     Позволяет в текучем стиле (fluent) собирать запрос и выполнять его.
+
+    Примеры использования:
+
+    # Поиск в одном классе
+    await (search_service.query()
+           .with_class_name("Объект эксплуатации")
+           .with_name("Насос")
+           .find_all())
+
+    # Поиск в нескольких классах
+    await (search_service.query()
+           .with_class_name("Объект эксплуатации")
+           .with_class_name("Оборудование")
+           .with_name("Насос")
+           .find_all())
     """
 
     def __init__(self, client: "NeosintezClient", class_service: "ClassService"):
@@ -38,7 +53,7 @@ class SearchQueryBuilder:
         self._class_service = class_service
         self._filters: list[SearchFilter] = []
         self._conditions: list[SearchCondition] = []
-        self._class_name: Optional[str] = None
+        self._class_names: list[str] = []
 
     def with_name(self, name: str) -> Self:
         """
@@ -66,13 +81,34 @@ class SearchQueryBuilder:
 
     def with_class_name(self, name: str) -> Self:
         """
-        Задает имя класса для поиска.
+        Добавляет имя класса для поиска.
         Имя будет разрешено в ID непосредственно перед выполнением запроса.
+        Можно вызывать несколько раз для поиска в нескольких классах.
 
         Args:
             name: Точное имя класса для поиска.
+
+        Returns:
+            Self: Для цепочки вызовов.
+
+        Raises:
+            ValueError: Если имя класса пустое или содержит только пробелы.
         """
-        self._class_name = name
+        if not name or not name.strip():
+            raise ValueError("Имя класса не может быть пустым или содержать только пробелы")
+
+        # Добавляем в список, а не перезаписываем
+        self._class_names.append(name.strip())
+        return self
+
+    def clear_class_names(self) -> Self:
+        """
+        Очищает список имен классов для поиска.
+
+        Returns:
+            Self: Для цепочки вызовов.
+        """
+        self._class_names.clear()
         return self
 
     def with_parent_id(self, parent_id: str) -> Self:
@@ -182,22 +218,27 @@ class SearchQueryBuilder:
         """
         filters = self._filters.copy()
 
-        if self._class_name:
-            logger.debug(f"Поиск ID для класса с именем '{self._class_name}'...")
-            matching_classes = await self._class_service.find_by_name(self._class_name)
-            exact_match = [cls for cls in matching_classes if cls.Name.lower() == self._class_name.lower()]
+        if self._class_names:
+            logger.debug(f"Поиск ID для классов с именами '{', '.join(self._class_names)}'...")
 
-            if len(exact_match) == 0:
-                raise ValueError(f"Класс с именем '{self._class_name}' не найден.")
-            if len(exact_match) > 1:
-                class_ids = [str(c.Id) for c in exact_match]
-                raise ValueError(
-                    f"Найдено несколько классов с именем '{self._class_name}'. IDs: {class_ids}. Уточните запрос."
-                )
+            # Получаем все классы по именам
+            all_matching_classes = []
+            for class_name in self._class_names:
+                matching_classes = await self._class_service.find_by_name(class_name)
+                exact_matches = [cls for cls in matching_classes if cls.Name.lower() == class_name.lower()]
+                if exact_matches:
+                    all_matching_classes.extend(exact_matches)
+                else:
+                    logger.warning(f"Класс с именем '{class_name}' не найден")
 
-            class_id = str(exact_match[0].Id)
-            logger.debug(f"Найден класс '{self._class_name}' с ID: {class_id}.")
-            filters.append(SearchFilter(Type=SearchFilterType.BY_CLASS, Value=class_id))
+            if not all_matching_classes:
+                raise ValueError(f"Классы с именами '{', '.join(self._class_names)}' не найдены.")
+
+            # Добавляем фильтры для каждого найденного класса
+            for class_obj in all_matching_classes:
+                class_id = str(class_obj.Id)
+                logger.debug(f"Добавляем фильтр для класса '{class_obj.Name}' с ID: {class_id}.")
+                filters.append(SearchFilter(Type=SearchFilterType.BY_CLASS, Value=class_id))
 
         return filters
 
@@ -212,21 +253,23 @@ class SearchQueryBuilder:
             if condition.Type == SearchConditionType.ATTRIBUTE and condition.Attribute is None and condition.Group:
                 attribute_name = condition.Group
 
-                if not self._class_name:
+                if not self._class_names:
                     raise ValueError(
                         f"Для поиска по имени атрибута '{attribute_name}' необходимо указать класс через with_class_name()"
                     )
 
-                logger.debug(f"Поиск ID для атрибута '{attribute_name}' в классе '{self._class_name}'...")
+                logger.debug(f"Поиск ID для атрибута '{attribute_name}' в классах '{', '.join(self._class_names)}'...")
 
-                # Получаем класс для доступа к его атрибутам
-                matching_classes = await self._class_service.find_by_name(self._class_name)
-                exact_match = [cls for cls in matching_classes if cls.Name.lower() == self._class_name.lower()]
+                # Получаем первый класс для доступа к его атрибутам
+                # Предполагаем, что все классы имеют одинаковые атрибуты
+                first_class_name = self._class_names[0]
+                matching_classes = await self._class_service.find_by_name(first_class_name)
+                exact_matches = [cls for cls in matching_classes if cls.Name.lower() == first_class_name.lower()]
 
-                if not exact_match:
-                    raise ValueError(f"Класс с именем '{self._class_name}' не найден.")
+                if not exact_matches:
+                    raise ValueError(f"Класс с именем '{first_class_name}' не найден.")
 
-                target_class = exact_match[0]
+                target_class = exact_matches[0]
 
                 # Получаем атрибуты класса
                 attributes = await self._class_service.get_attributes(str(target_class.Id))
@@ -235,7 +278,7 @@ class SearchQueryBuilder:
                 if not target_attribute:
                     available_attrs = [a.Name for a in attributes]
                     raise ValueError(
-                        f"Атрибут '{attribute_name}' не найден в классе '{self._class_name}'. "
+                        f"Атрибут '{attribute_name}' не найден в классе '{first_class_name}'. "
                         f"Доступные атрибуты: {available_attrs}"
                     )
 
