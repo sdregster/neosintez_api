@@ -98,6 +98,22 @@ class ObjectsResource(BaseResource):
         await self._request("PUT", endpoint, data=data)
         return True
 
+    async def set_permissions(self, object_id: Union[str, UUID], permissions) -> bool:
+        """
+        Обновляет объект.
+
+        Args:
+            object_id: ID объекта
+            data: Данные для обновления объекта
+
+        Returns:
+            bool: True, если обновление успешно
+        """
+        endpoint = f"api/objects/{object_id}/permissions"
+
+        await self._request("PUT", endpoint, data=permissions)
+        return True
+    
     # Реальное удаление объекта
     # async def delete(self, object_id: Union[str, UUID]) -> bool:
     #     """
