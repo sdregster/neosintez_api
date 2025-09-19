@@ -408,9 +408,16 @@ class NeosintezClient:
             ) as response:
                 status = response.status
 
-                try:
-                    content = await response.json()
-                except json.JSONDecodeError:
+                # Проверяем тип контента для правильной обработки
+                content_type = response.headers.get("content-type", "").lower()
+
+                if "application/json" in content_type:
+                    try:
+                        content = await response.json()
+                    except json.JSONDecodeError:
+                        content = await response.text()
+                else:
+                    # Для HTML и других типов контента сразу получаем текст
                     content = await response.text()
 
                 return status, content
@@ -673,3 +680,50 @@ class NeosintezClient:
             headers=headers,
             response_model=response_model,
         )
+
+    async def get_portal_page(
+        self,
+        endpoint: str = "/",
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> str:
+        """
+        Получает HTML-страницу портала (аналог фронтенд-запроса).
+
+        Args:
+            endpoint: Конечная точка портала (по умолчанию корень)
+            params: URL-параметры запроса
+            headers: Дополнительные заголовки
+
+        Returns:
+            str: HTML-содержимое страницы
+
+        Raises:
+            NeosintezAPIError: Если страница не получена или произошла ошибка API
+        """
+        # Специальные заголовки для имитации браузера
+        portal_headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ru,en;q=0.9",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Upgrade-Insecure-Requests": "1",
+        }
+
+        if headers:
+            portal_headers.update(headers)
+
+        # Используем _request_raw для получения сырого ответа
+        status, content = await self._request_raw(
+            method="GET",
+            endpoint=endpoint,
+            params=params,
+            headers=portal_headers,
+        )
+
+        if status == 200:
+            return content if isinstance(content, str) else str(content)
+        else:
+            raise NeosintezAPIError(
+                status_code=status, message=f"Не удалось получить страницу портала: {status}", response_data=content
+            )
