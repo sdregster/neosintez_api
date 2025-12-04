@@ -97,14 +97,20 @@ class ObjectToModelFactory:
 
     async def _get_object_data(self, object_id: str) -> Dict[str, Any]:
         """
-        Получает сырые данные объекта по ID.
+        Получает сырые данные объекта по идентификатору.
+
+        Args:
+            object_id: Идентификатор объекта.
+
+        Returns:
+            Dict[str, Any]: Сырые данные объекта, возвращённые API.
+
+        Raises:
+            NeosintezAPIError: В случае ошибки при запросе к API.
         """
-        try:
-            endpoint = f"api/objects/{object_id}"
-            raw_data = await self.client._request("GET", endpoint)
-            return raw_data
-        except Exception as e:
-            raise NeosintezAPIError(f"Ошибка получения объекта {object_id}: {e}")
+        endpoint = f"api/objects/{object_id}"
+        raw_data = await self.client._request("GET", endpoint)
+        return raw_data
 
     def _populate_model_from_object(
         self,
