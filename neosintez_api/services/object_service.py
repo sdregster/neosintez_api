@@ -21,6 +21,12 @@ from .resolvers import AttributeResolver
 # Настройка логгера
 logger = logging.getLogger("neosintez_api.services.object_service")
 
+
+def _emit_profile(message: str) -> None:
+    """Пишет профильные сообщения и в std logging, и в stdout."""
+    logger.info(message)
+    print(message)
+
 if TYPE_CHECKING:
     from neosintez_api.models import NeosintezBaseModel
 
@@ -281,7 +287,7 @@ class ObjectService(Generic[T]):
                 created_objects_data.append(obj_data)
 
         create_stage_duration = perf_counter() - create_stage_started_at
-        logger.info(
+        _emit_profile(
             "[IMPORT PROFILING] create_many stage1: "
             f"requested={len(requests)}, created={len(created_objects_data)}, "
             f"errors={len(result.errors)}, duration={create_stage_duration:.2f}s, "
@@ -307,13 +313,13 @@ class ObjectService(Generic[T]):
                 attrs_stage_duration = perf_counter() - attrs_stage_started_at
                 result.errors.extend(attr_errors)
 
-                logger.info(
+                _emit_profile(
                     "[IMPORT PROFILING] create_many stage2: "
                     f"objects_with_attrs={len(objects_attributes)}, attr_errors={len(attr_errors)}, "
                     f"duration={attrs_stage_duration:.2f}s, max_concurrent={max_concurrent_attrs}"
                 )
             else:
-                logger.info("[IMPORT PROFILING] create_many stage2: objects_with_attrs=0, skipped=true")
+                _emit_profile("[IMPORT PROFILING] create_many stage2: objects_with_attrs=0, skipped=true")
 
         # Этап 3: Формирование результата
         for obj_data in created_objects_data:
@@ -334,7 +340,7 @@ class ObjectService(Generic[T]):
 
             result.created_models.append(model)
 
-        logger.info(
+        _emit_profile(
             "[IMPORT PROFILING] create_many summary: "
             f"requested={len(requests)}, created={len(result.created_models)}, "
             f"errors={len(result.errors)}, total={perf_counter() - total_started_at:.2f}s"

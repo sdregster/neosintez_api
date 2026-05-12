@@ -26,6 +26,12 @@ from .resolvers import AttributeResolver
 logger = logging.getLogger("neosintez_api.excel_importer")
 
 
+def _emit_profile(message: str) -> None:
+    """Пишет профильные сообщения и в std logging, и в stdout."""
+    logger.info(message)
+    print(message)
+
+
 class ExcelStructure(BaseModel):
     """Структура Excel файла после анализа"""
 
@@ -226,7 +232,7 @@ class ExcelImporter:
         validation_duration = perf_counter() - validation_started_at
         validation_errors.extend(loading_errors)  # Добавляем ошибки, найденные при загрузке
 
-        logger.info(
+        _emit_profile(
             "[IMPORT PROFILING] preview summary: "
             f"rows={structure.total_rows}, objects={estimated_objects}, classes={len(structure.classes_found)}, "
             f"analyze={structure_duration:.2f}s, load={load_duration:.2f}s, "
@@ -266,7 +272,7 @@ class ExcelImporter:
             preview_started_at = perf_counter()
             preview = await self.preview_import(excel_path, parent_id, worksheet_name)
             preview_duration = perf_counter() - preview_started_at
-            logger.info(
+            _emit_profile(
                 "[IMPORT PROFILING] preview completed: "
                 f"objects={len(preview.objects_to_create)}, total={preview_duration:.2f}s, "
                 f"errors={len(preview.validation_errors)}, warnings={len(preview.validation_warnings)}"
@@ -316,7 +322,7 @@ class ExcelImporter:
                 # --- [НАЧАЛО] ОПТИМИЗАЦИЯ: Групповой резолв ссылок ---
                 pending_links: dict[tuple[str, str | None, str], list[tuple[int, str]]] = {}
                 objects_data_for_level = objects_by_level[level]
-                logger.info(
+                _emit_profile(
                     "[IMPORT PROFILING] level start: "
                     f"level={level}, objects={len(objects_data_for_level)}, failed_before={len(failed_or_skipped_virtual_ids)}"
                 )
@@ -358,7 +364,7 @@ class ExcelImporter:
                         logger.error(err_msg)
                         errors.append(err_msg)
                 resolve_links_duration = perf_counter() - resolve_links_started_at
-                logger.info(
+                _emit_profile(
                     "[IMPORT PROFILING] level links: "
                     f"level={level}, unique_links={len(pending_links)}, resolved={len(resolved_links)}, "
                     f"collect={collect_links_duration:.2f}s, resolve={resolve_links_duration:.2f}s"
@@ -458,14 +464,14 @@ class ExcelImporter:
                         # Если подготовка не удалась, считаем объект сбойным
                         failed_or_skipped_virtual_ids.add(obj_data["virtual_id"])
                 prepare_requests_duration = perf_counter() - prepare_requests_started_at
-                logger.info(
+                _emit_profile(
                     "[IMPORT PROFILING] level preparation: "
                     f"level={level}, requests={len(requests_to_process)}, skipped={len(objects_data_for_level) - len(requests_to_process)}, "
                     f"duration={prepare_requests_duration:.2f}s"
                 )
 
                 if not requests_to_process:
-                    logger.info(
+                    _emit_profile(
                         "[IMPORT PROFILING] level finish: "
                         f"level={level}, duration={perf_counter() - level_started_at:.2f}s, created=0, failed_total={len(failed_or_skipped_virtual_ids)}"
                     )
@@ -525,7 +531,7 @@ class ExcelImporter:
                     if creation_result.errors:
                         errors.extend(creation_result.errors)
 
-                    logger.info(
+                    _emit_profile(
                         "[IMPORT PROFILING] level creation: "
                         f"level={level}, requests={len(requests_to_process)}, created={len(creation_result.created_models)}, "
                         f"errors={len(creation_result.errors)}, duration={create_duration:.2f}s"
@@ -538,7 +544,7 @@ class ExcelImporter:
                     # Если вся пачка упала, все ID в ней считаются сбойными
                     failed_or_skipped_virtual_ids.update(batch_virtual_ids)
                 finally:
-                    logger.info(
+                    _emit_profile(
                         "[IMPORT PROFILING] level finish: "
                         f"level={level}, duration={perf_counter() - level_started_at:.2f}s, "
                         f"created_total={len(created_objects)}, failed_total={len(failed_or_skipped_virtual_ids)}, "
@@ -547,7 +553,7 @@ class ExcelImporter:
 
             duration = (datetime.now() - start_time).total_seconds()
             logger.info(f"Импорт завершен за {duration:.2f} сек.")
-            logger.info(
+            _emit_profile(
                 "[IMPORT PROFILING] import summary: "
                 f"objects={len(preview.objects_to_create)}, created={len(created_objects)}, "
                 f"levels={len(objects_by_level)}, preview={preview_duration:.2f}s, "
@@ -732,7 +738,7 @@ class ExcelImporter:
                 # Иначе используем данные как есть, с числовыми индексами колонок
                 df = df_no_header
             read_duration = perf_counter() - read_started_at
-            logger.info(
+            _emit_profile(
                 "[IMPORT PROFILING] load_objects read_excel: "
                 f"rows={len(df)}, columns={len(df.columns)}, duration={read_duration:.2f}s"
             )
@@ -819,7 +825,7 @@ class ExcelImporter:
                 logger.error(f"Ошибка парсинга строки {index + 2}: {e}", exc_info=True)
                 continue
         parse_duration = perf_counter() - parse_started_at
-        logger.info(
+        _emit_profile(
             "[IMPORT PROFILING] load_objects parse_rows: "
             f"objects={len(objects_to_create)}, errors={len(errors)}, duration={parse_duration:.2f}s"
         )
@@ -833,7 +839,7 @@ class ExcelImporter:
         file_attr_errors = await self._process_file_attributes(objects_to_create)
         file_attrs_duration = perf_counter() - file_attrs_started_at
         errors.extend(file_attr_errors)
-        logger.info(
+        _emit_profile(
             "[IMPORT PROFILING] load_objects finalize: "
             f"preload_metadata={preload_duration:.2f}s, file_attrs={file_attrs_duration:.2f}s, "
             f"file_attr_errors={len(file_attr_errors)}"
