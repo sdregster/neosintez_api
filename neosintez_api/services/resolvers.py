@@ -22,7 +22,8 @@ class AttributeResolver:
     Например, находит ID для строкового значения ссылочного атрибута.
     """
 
-    _link_cache: TTLCache[dict] = TTLCache(default_ttl=3600, max_size=10_000)
+    _link_cache: TTLCache[object] = TTLCache(default_ttl=3600, max_size=10_000)
+    _LINK_NOT_FOUND = object()
 
     def __init__(self, client: "NeosintezClient"):
         self.search_service = ObjectSearchService(client)
@@ -72,7 +73,12 @@ class AttributeResolver:
 
         # Проверяем кэш перед выполнением дорогостоящего поиска
         key = self._make_key(linked_class_id, parent_id, attr_value)
-        if cached_result := self._link_cache.get(key):
+        cached_result = self._link_cache.get(key)
+        if cached_result is self._LINK_NOT_FOUND:
+            raise ValueError(
+                f"Не удалось найти связанный объект с именем '{attr_value}' для атрибута '{attr_meta.Name}'."
+            )
+        if cached_result is not None:
             return cached_result
 
         resolve_started_at = perf_counter()
@@ -101,6 +107,9 @@ class AttributeResolver:
             self._link_cache.set(key, result)
             return result
         else:
+            # Кэшируем отрицательный результат, чтобы не сканировать
+            # один и тот же большой справочник повторно в рамках TTL.
+            self._link_cache.set(key, self._LINK_NOT_FOUND)
             raise ValueError(
                 f"Не удалось найти связанный объект с именем '{attr_value}' для атрибута '{attr_meta.Name}'."
             )
