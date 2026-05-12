@@ -42,7 +42,7 @@ async def upsert_from_excel(
 	name_col: str,
 	*,
 	dry_run: bool = False,
-	attribute_renames: Dict[str, str] | None = None,
+	attribute_renames: Dict[str, str | list[str]] | None = None,
 	name_to_attribute: str | None = "Наименование",
 	actuality_attribute_name: str | None = "Актуальность",
 	actual_value: str = "Да",
@@ -182,10 +182,18 @@ async def upsert_from_excel(
 					# Не трогаем колонку имени и (если есть) колонку класса,
 					# чтобы не ломать name_aliases/class_name_aliases
 					if col_name == name_col or (class_col and col_name == class_col):
-						target_col = col_name
+						target_cols = [col_name]
 					else:
-						target_col = attribute_renames.get(col_name, col_name) if attribute_renames else col_name
-					row_for_factory[target_col] = value
+						renamed = attribute_renames.get(col_name, col_name) if attribute_renames else col_name
+						target_cols = renamed if isinstance(renamed, list) else [renamed]
+					
+					for target_col in target_cols:
+						# Исправление некорректных ссылок на ТОиР (убираем лишний "/" после toir_30/)
+						val_to_use = value
+						if target_col == "Ссылка на ТОиР" and isinstance(val_to_use, str):
+							val_to_use = val_to_use.replace("toir_30/#", "toir_30#")
+						
+						row_for_factory[target_col] = val_to_use
 
 				# Валидация обязательных полей
 				# Определяем класс: приоритет у параметра default_class_name
@@ -331,7 +339,7 @@ async def main():
 		attribute_renames={
 			"УИД": "GUID",
 			"Номер тех.позиции по проекту": "Номер по технологической схеме",
-			"Подразделение": "Подразделение владелец",
+			"Подразделение": ["Подразделение владелец", "Подразделение владелец (ссылка)"],
 			"Рег.номер ОПО": "Регистрационный номер ОПО",
 			"Ответственный за тех.позицию": "Ответственный за техническую позицию",
 		},
