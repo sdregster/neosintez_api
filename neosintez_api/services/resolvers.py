@@ -3,6 +3,7 @@
 Например, для преобразования строковых значений атрибутов в ID.
 """
 
+from time import perf_counter
 from typing import TYPE_CHECKING, Optional
 
 from neosintez_api.services.cache import TTLCache
@@ -74,11 +75,20 @@ class AttributeResolver:
         if cached_result := self._link_cache.get(key):
             return cached_result
 
+        resolve_started_at = perf_counter()
         query = self.search_service.query().with_class_id(linked_class_id)
         if parent_id:
             query.with_parent_id(parent_id)
 
         possible_options = await query.find_all()
+        resolve_duration = perf_counter() - resolve_started_at
+
+        if resolve_duration >= 1.0:
+            print(
+                "[IMPORT PROFILING] slow link resolve: "
+                f"attribute='{attr_meta.Name}', value='{attr_value}', class_id='{linked_class_id}', "
+                f"root_id='{parent_id}', candidates={len(possible_options)}, duration={resolve_duration:.2f}s"
+            )
 
         found_option = next(
             (option for option in possible_options if option.Name.lower() == attr_value.lower()),

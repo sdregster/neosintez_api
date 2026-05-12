@@ -6,6 +6,7 @@
 import asyncio
 import logging
 from datetime import datetime
+from time import perf_counter
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -202,20 +203,37 @@ class ExcelImporter:
         """
         logger.info(f"Предварительный просмотр импорта из {excel_path}")
 
+        preview_started_at = perf_counter()
+
         # Анализируем структуру
+        structure_started_at = perf_counter()
         structure = await self.analyze_structure(excel_path, worksheet_name)
+        structure_duration = perf_counter() - structure_started_at
 
         # Загружаем данные и собираем ошибки загрузки
+        load_started_at = perf_counter()
         objects_to_create, loading_errors = await self._load_objects_sequentially(
             excel_path, structure, parent_id, worksheet_name
         )
+        load_duration = perf_counter() - load_started_at
 
         # Подсчитываем объекты
         estimated_objects = len(objects_to_create)
 
         # Проверяем валидность
+        validation_started_at = perf_counter()
         validation_errors, validation_warnings = await self._validate_objects(objects_to_create)
+        validation_duration = perf_counter() - validation_started_at
         validation_errors.extend(loading_errors)  # Добавляем ошибки, найденные при загрузке
+
+        logger.info(
+            "[IMPORT PROFILING] preview summary: "
+            f"rows={structure.total_rows}, objects={estimated_objects}, classes={len(structure.classes_found)}, "
+            f"analyze={structure_duration:.2f}s, load={load_duration:.2f}s, "
+            f"validate={validation_duration:.2f}s, total={perf_counter() - preview_started_at:.2f}s, "
+            f"loading_errors={len(loading_errors)}, validation_errors={len(validation_errors)}, "
+            f"validation_warnings={len(validation_warnings)}"
+        )
 
         return ImportPreview(
             structure=structure,
@@ -240,11 +258,19 @@ class ExcelImporter:
             ImportResult: Результат импорта
         """
         start_time = datetime.now()
+        import_started_at = perf_counter()
         logger.info(f"Начинаем импорт из {excel_path} в объект {parent_id}")
 
         try:
             # Получаем предварительный просмотр
+            preview_started_at = perf_counter()
             preview = await self.preview_import(excel_path, parent_id, worksheet_name)
+            preview_duration = perf_counter() - preview_started_at
+            logger.info(
+                "[IMPORT PROFILING] preview completed: "
+                f"objects={len(preview.objects_to_create)}, total={preview_duration:.2f}s, "
+                f"errors={len(preview.validation_errors)}, warnings={len(preview.validation_warnings)}"
+            )
 
             if preview.validation_errors:
                 logger.error(f"Найдены ошибки валидации: {preview.validation_errors}")
@@ -283,15 +309,20 @@ class ExcelImporter:
 
             # Создаем объекты, начиная с верхнего уровня
             for level in sorted(objects_by_level.keys()):
-                logger.info(f"Создание объектов на уровне {level}")
+                level_started_at = perf_counter()
                 requests_to_process = []
                 batch_virtual_ids = set()
 
                 # --- [НАЧАЛО] ОПТИМИЗАЦИЯ: Групповой резолв ссылок ---
                 pending_links: dict[tuple[str, str | None, str], list[tuple[int, str]]] = {}
                 objects_data_for_level = objects_by_level[level]
+                logger.info(
+                    "[IMPORT PROFILING] level start: "
+                    f"level={level}, objects={len(objects_data_for_level)}, failed_before={len(failed_or_skipped_virtual_ids)}"
+                )
 
                 # Шаг 1: Собрать все ссылочные атрибуты для этого уровня
+                collect_links_started_at = perf_counter()
                 for i, obj_data in enumerate(objects_data_for_level):
                     class_name = obj_data["class_name"]
                     attributes_meta = self._class_attributes_cache.get(class_name)
@@ -309,8 +340,10 @@ class ExcelImporter:
                                 if linked_class_id:
                                     key = (linked_class_id, attr_meta.ObjectRootId, value)
                                     pending_links.setdefault(key, []).append((i, attr_name))
+                collect_links_duration = perf_counter() - collect_links_started_at
 
                 # Шаг 2: Пакетно разрешить все уникальные ссылки
+                resolve_links_started_at = perf_counter()
                 resolved_links = {}
                 for key, refs in pending_links.items():
                     linked_class_id, root_id, value_str = key
@@ -324,8 +357,15 @@ class ExcelImporter:
                         err_msg = f"Ошибка разрешения ссылки для значения '{value_str}': {e}"
                         logger.error(err_msg)
                         errors.append(err_msg)
+                resolve_links_duration = perf_counter() - resolve_links_started_at
+                logger.info(
+                    "[IMPORT PROFILING] level links: "
+                    f"level={level}, unique_links={len(pending_links)}, resolved={len(resolved_links)}, "
+                    f"collect={collect_links_duration:.2f}s, resolve={resolve_links_duration:.2f}s"
+                )
                 # --- [КОНЕЦ] ОПТИМИЗАЦИЯ ---
 
+                prepare_requests_started_at = perf_counter()
                 for obj_data in objects_data_for_level:
                     virtual_id = obj_data["virtual_id"]
                     virtual_parent_id = obj_data["parent_id"]
@@ -417,8 +457,18 @@ class ExcelImporter:
                         errors.append(error_msg)
                         # Если подготовка не удалась, считаем объект сбойным
                         failed_or_skipped_virtual_ids.add(obj_data["virtual_id"])
+                prepare_requests_duration = perf_counter() - prepare_requests_started_at
+                logger.info(
+                    "[IMPORT PROFILING] level preparation: "
+                    f"level={level}, requests={len(requests_to_process)}, skipped={len(objects_data_for_level) - len(requests_to_process)}, "
+                    f"duration={prepare_requests_duration:.2f}s"
+                )
 
                 if not requests_to_process:
+                    logger.info(
+                        "[IMPORT PROFILING] level finish: "
+                        f"level={level}, duration={perf_counter() - level_started_at:.2f}s, created=0, failed_total={len(failed_or_skipped_virtual_ids)}"
+                    )
                     continue
 
                 # ОПТИМИЗИРОВАННОЕ пакетное создание объектов на текущем уровне
@@ -427,11 +477,13 @@ class ExcelImporter:
                     from neosintez_api.config import PerformanceSettings
 
                     # Используем максимально оптимизированную версию create_many_optimized
+                    create_started_at = perf_counter()
                     creation_result = await self.object_service.create_many_optimized(
                         requests_to_process,
                         max_concurrent_create=PerformanceSettings.MAX_CONCURRENT_OBJECT_CREATION,
                         max_concurrent_attrs=PerformanceSettings.MAX_CONCURRENT_ATTRIBUTE_SETTING,
                     )
+                    create_duration = perf_counter() - create_started_at
 
                     # Обрабатываем успешные результаты
                     succeeded_virtual_ids = set()
@@ -473,15 +525,34 @@ class ExcelImporter:
                     if creation_result.errors:
                         errors.extend(creation_result.errors)
 
+                    logger.info(
+                        "[IMPORT PROFILING] level creation: "
+                        f"level={level}, requests={len(requests_to_process)}, created={len(creation_result.created_models)}, "
+                        f"errors={len(creation_result.errors)}, duration={create_duration:.2f}s"
+                    )
+
                 except Exception as e:
                     error_msg = f"Критическая ошибка при пакетном создании объектов на уровне {level}: {e}"
                     logger.error(error_msg, exc_info=True)
                     errors.append(error_msg)
                     # Если вся пачка упала, все ID в ней считаются сбойными
                     failed_or_skipped_virtual_ids.update(batch_virtual_ids)
+                finally:
+                    logger.info(
+                        "[IMPORT PROFILING] level finish: "
+                        f"level={level}, duration={perf_counter() - level_started_at:.2f}s, "
+                        f"created_total={len(created_objects)}, failed_total={len(failed_or_skipped_virtual_ids)}, "
+                        f"errors_total={len(errors)}"
+                    )
 
             duration = (datetime.now() - start_time).total_seconds()
             logger.info(f"Импорт завершен за {duration:.2f} сек.")
+            logger.info(
+                "[IMPORT PROFILING] import summary: "
+                f"objects={len(preview.objects_to_create)}, created={len(created_objects)}, "
+                f"levels={len(objects_by_level)}, preview={preview_duration:.2f}s, "
+                f"total={perf_counter() - import_started_at:.2f}s, errors={len(errors)}, warnings={len(warnings)}"
+            )
 
             self._log_import_statistics(
                 ImportResult(
@@ -651,6 +722,7 @@ class ExcelImporter:
             sheet_to_read = worksheet_name or 0
 
             # Сначала читаем без заголовков, чтобы проверить их наличие
+            read_started_at = perf_counter()
             df_no_header = pd.read_excel(excel_path, sheet_name=sheet_to_read, header=None)
 
             if self._check_headers(df_no_header):
@@ -659,6 +731,11 @@ class ExcelImporter:
             else:
                 # Иначе используем данные как есть, с числовыми индексами колонок
                 df = df_no_header
+            read_duration = perf_counter() - read_started_at
+            logger.info(
+                "[IMPORT PROFILING] load_objects read_excel: "
+                f"rows={len(df)}, columns={len(df.columns)}, duration={read_duration:.2f}s"
+            )
 
         except Exception as e:
             logger.error(f"Не удалось прочитать Excel файл: {e}", exc_info=True)
@@ -670,6 +747,7 @@ class ExcelImporter:
         parent_map: Dict[int, str] = {0: parent_id}  # level -> virtual_id
         virtual_id_counter = 0
 
+        parse_started_at = perf_counter()
         for index, row in df.iterrows():
             # Пропускаем пустые строки, где нет даже уровня
             if pd.isna(row.iloc[structure.level_column]):
@@ -740,12 +818,26 @@ class ExcelImporter:
             except (ValueError, IndexError) as e:
                 logger.error(f"Ошибка парсинга строки {index + 2}: {e}", exc_info=True)
                 continue
+        parse_duration = perf_counter() - parse_started_at
+        logger.info(
+            "[IMPORT PROFILING] load_objects parse_rows: "
+            f"objects={len(objects_to_create)}, errors={len(errors)}, duration={parse_duration:.2f}s"
+        )
 
         # После формирования objects_to_create — сначала кэшируем метаданные классов
+        preload_started_at = perf_counter()
         await self._preload_class_metadata(objects_to_create)
+        preload_duration = perf_counter() - preload_started_at
         # Затем обрабатываем файловые атрибуты
+        file_attrs_started_at = perf_counter()
         file_attr_errors = await self._process_file_attributes(objects_to_create)
+        file_attrs_duration = perf_counter() - file_attrs_started_at
         errors.extend(file_attr_errors)
+        logger.info(
+            "[IMPORT PROFILING] load_objects finalize: "
+            f"preload_metadata={preload_duration:.2f}s, file_attrs={file_attrs_duration:.2f}s, "
+            f"file_attr_errors={len(file_attr_errors)}"
+        )
 
         return objects_to_create, errors
 

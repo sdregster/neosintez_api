@@ -5,6 +5,7 @@
 
 import asyncio
 import logging
+from time import perf_counter
 from typing import TYPE_CHECKING, Any, Dict, Generic, List, Optional, Type, Union
 from uuid import UUID
 
@@ -220,6 +221,7 @@ class ObjectService(Generic[T]):
         """
         logger.info(f"Начало МАКСИМАЛЬНО ОПТИМИЗИРОВАННОГО создания {len(requests)} объектов")
         result = BulkCreateResult[T]()
+        total_started_at = perf_counter()
 
         # Этап 1: Создание объектов без атрибутов (параллельно)
         create_semaphore = asyncio.Semaphore(max_concurrent_create)
@@ -269,6 +271,7 @@ class ObjectService(Generic[T]):
 
         # Запускаем создание всех объектов параллельно
         logger.info(f"Этап 1: Создание {len(requests)} объектов параллельно...")
+        create_stage_started_at = perf_counter()
         create_tasks = [create_object_only(request) for request in requests]
         create_results = await asyncio.gather(*create_tasks, return_exceptions=False)
 
@@ -277,7 +280,13 @@ class ObjectService(Generic[T]):
             if obj_data is not None:
                 created_objects_data.append(obj_data)
 
-        logger.info(f"Этап 1 завершен: {len(created_objects_data)} объектов создано")
+        create_stage_duration = perf_counter() - create_stage_started_at
+        logger.info(
+            "[IMPORT PROFILING] create_many stage1: "
+            f"requested={len(requests)}, created={len(created_objects_data)}, "
+            f"errors={len(result.errors)}, duration={create_stage_duration:.2f}s, "
+            f"max_concurrent={max_concurrent_create}"
+        )
 
         # Этап 2: Batch установка атрибутов
         if created_objects_data:
@@ -293,12 +302,18 @@ class ObjectService(Generic[T]):
 
             if objects_attributes:
                 # Batch установка атрибутов
+                attrs_stage_started_at = perf_counter()
                 attr_errors = await self.client.objects.set_attributes_batch(objects_attributes, max_concurrent_attrs)
+                attrs_stage_duration = perf_counter() - attrs_stage_started_at
                 result.errors.extend(attr_errors)
 
                 logger.info(
-                    f"Этап 2 завершен: атрибуты установлены для {len(objects_attributes) - len(attr_errors)} объектов"
+                    "[IMPORT PROFILING] create_many stage2: "
+                    f"objects_with_attrs={len(objects_attributes)}, attr_errors={len(attr_errors)}, "
+                    f"duration={attrs_stage_duration:.2f}s, max_concurrent={max_concurrent_attrs}"
                 )
+            else:
+                logger.info("[IMPORT PROFILING] create_many stage2: objects_with_attrs=0, skipped=true")
 
         # Этап 3: Формирование результата
         for obj_data in created_objects_data:
@@ -320,7 +335,9 @@ class ObjectService(Generic[T]):
             result.created_models.append(model)
 
         logger.info(
-            f"МАКСИМАЛЬНО ОПТИМИЗИРОВАННОЕ создание завершено. Успешно: {len(result.created_models)}, Ошибок: {len(result.errors)}"
+            "[IMPORT PROFILING] create_many summary: "
+            f"requested={len(requests)}, created={len(result.created_models)}, "
+            f"errors={len(result.errors)}, total={perf_counter() - total_started_at:.2f}s"
         )
         return result
 
