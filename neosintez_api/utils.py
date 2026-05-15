@@ -7,7 +7,7 @@ import json
 import logging
 import re
 from datetime import date, datetime, time
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
 from typing import (
     Any,
@@ -36,6 +36,8 @@ from neosintez_api.core.exceptions import (
 logger = logging.getLogger("neosintez_api")
 
 T = TypeVar("T")
+NEOSINTEZ_NUMBER_SCALE = 6
+NEOSINTEZ_NUMBER_QUANT = Decimal("0.000001")
 
 
 class CustomJSONEncoder(json.JSONEncoder):
@@ -303,7 +305,7 @@ def convert_value_to_wio_format(value: Any, wio_type: WioAttributeType) -> Any:
             # Числовой тип
             if isinstance(value, bool):
                 return 1 if value else 0
-            return float(value)
+            return normalize_number_for_neosintez(value)
 
         elif wio_type == WioAttributeType.DATE:
             # Тип даты
@@ -387,10 +389,7 @@ def format_attribute_value(attr_meta: Dict[str, Any], value: Any) -> Any:
     try:
         # Преобразуем значение в зависимости от типа атрибута
         if attr_type == WioAttributeType.NUMBER:
-            # Целое число
-            if isinstance(value, str) and value.strip():
-                return int(value)
-            return int(value) if value is not None else None
+            return normalize_number_for_neosintez(value)
         elif attr_type == WioAttributeType.STRING:
             # Строка
             return str(value) if value is not None else None
@@ -446,6 +445,8 @@ def build_attribute_body(attr_meta: Any, value: Any) -> Dict[str, Any]:
             formatted_value = value  # Передаем словарь как есть
         else:
             raise TypeError(f"Для ссылочного атрибута {attr_id} ожидался dict с ключом 'Id', но получен {type(value)}")
+    elif api_attr_type == WioAttributeType.NUMBER or api_attr_type == WioAttributeType.NUMBER.value:
+        formatted_value = normalize_number_for_neosintez(value)
     elif value is None:
         formatted_value = None
     elif isinstance(value, (str, int, float, bool)):
@@ -458,6 +459,30 @@ def build_attribute_body(attr_meta: Any, value: Any) -> Dict[str, Any]:
         formatted_value = str(value)
 
     return {"Id": str(attr_id), "Value": formatted_value, "Type": api_attr_type}
+
+
+def normalize_number_for_neosintez(value: Any) -> int | float | None:
+    """Нормализует числовое значение под ограничения API Неосинтеза.
+
+    API принимает не больше 6 знаков после запятой. Округляем по правилам
+    HALF_UP, чтобы микрозначения вроде 7e-07 превращались в 0, а 9.8e-06 в 0.00001.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return 1 if value else 0
+
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as e:
+        raise NeosintezValidationError(
+            f"Не удалось преобразовать значение '{value}' в число для Неосинтеза: {e!s}"
+        ) from e
+
+    rounded = decimal_value.quantize(NEOSINTEZ_NUMBER_QUANT, rounding=ROUND_HALF_UP)
+    if rounded == rounded.to_integral_value():
+        return int(rounded)
+    return float(rounded)
 
 
 def get_field_external_name(model_class: type, field_name: str) -> str:
